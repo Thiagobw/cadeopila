@@ -52,3 +52,28 @@ build/
 
 ### environment variables ###
 .env
+.env.*
+!.env.example
+
+### Security & Certificates ###
+*.p12
+*.jks
+*.pem
+*.key
+keystore.properties
+truststore.jks
+truststore.p12
+
+### Spring Boot - configs com credenciais ###
+application-local.properties
+application-local.yml
+application-local.yaml
+application-prod.properties
+application-prod.yml
+application-prod.yaml
+application-secret*.properties
+application-secret*.yml
+application-secret*.yaml
+
+### Docker ###
+docker-compose.override.yml
