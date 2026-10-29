@@ -49,3 +49,6 @@ build/
 
 ### Claude Code ###
 .claude/
+
+### environment variables ###
+.env
