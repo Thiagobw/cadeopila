@@ -1,0 +1,87 @@
+services:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # PostgreSQL 17.11 — banco único, dois schemas isolados por usuário
+  # ─────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17.11
+    container_name: cadeopila-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: postgres
+      USERS_DB_USER: ${USERS_DB_USER:?USERS_DB_USER is required}
+      USERS_DB_PASSWORD: ${USERS_DB_PASSWORD:?USERS_DB_PASSWORD is required}
+      TRANSACTIONS_DB_USER: ${TRANSACTIONS_DB_USER:?TRANSACTIONS_DB_USER is required}
+      TRANSACTIONS_DB_PASSWORD: ${TRANSACTIONS_DB_PASSWORD:?TRANSACTIONS_DB_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - cadeopila-net
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >
+          pg_isready -U ${POSTGRES_USER} -d postgres &&
+          psql -U ${POSTGRES_USER} -d postgres -tc
+          "SELECT 1 FROM pg_database WHERE datname='users_db'" | grep -q 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────────
+  # MS1 — user-service (porta 8081)
+  # ─────────────────────────────────────────────────────────────────────
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: cadeopila-user-service
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/users_db
+      SPRING_DATASOURCE_USERNAME: ${USERS_DB_USER:?}
+      SPRING_DATASOURCE_PASSWORD: ${USERS_DB_PASSWORD:?}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
+    ports:
+      - "8081:8080"
+    networks:
+      - cadeopila-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────────────────
+  # MS2 — transaction-service (porta 8082)
+  # ─────────────────────────────────────────────────────────────────────
+  transaction-service:
+    build:
+      context: ./transaction-service
+      dockerfile: Dockerfile
+    container_name: cadeopila-transaction-service
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/transactions_db
+      SPRING_DATASOURCE_USERNAME: ${TRANSACTIONS_DB_USER:?}
+      SPRING_DATASOURCE_PASSWORD: ${TRANSACTIONS_DB_PASSWORD:?}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
+    ports:
+      - "8082:8080"
+    networks:
+      - cadeopila-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# ──────────────────────────────────────────────────────────────────────
+networks:
+  cadeopila-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
