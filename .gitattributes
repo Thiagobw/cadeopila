@@ -1,0 +1,5 @@
+# Força LF em arquivos que rodam dentro de containers Linux
+*.sh        text eol=lf
+
+# Comportamento padrão para os demais arquivos
+*           text=auto
