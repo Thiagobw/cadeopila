@@ -27,7 +27,7 @@ services:
         - "CMD-SHELL"
         - >
           pg_isready -U ${POSTGRES_USER} -d postgres &&
-          psql -U ${POSTGRES_USER} -tc
+          psql -U ${POSTGRES_USER} -d postgres -tc
           "SELECT 1 FROM pg_database WHERE datname='users_db'" | grep -q 1
       interval: 10s
       timeout: 5s
