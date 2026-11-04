@@ -2,6 +2,7 @@ package br.com.cadeopila.userservice.adapters.in.web.handler;
 
 import br.com.cadeopila.userservice.core.exception.UserAlreadyExistsException;
 import br.com.cadeopila.userservice.core.exception.UserNotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.validation.FieldError;
@@ -46,6 +47,14 @@ public class GlobalExceptionHandler {
         problem.setDetail(ex.getMessage());
         problem.setProperty("field", ex.getField());
         problem.setProperty("value", ex.getValue());
+        return problem;
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        var problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Conflito de dados");
+        problem.setDetail("A requisição viola uma restrição de unicidade.");
         return problem;
     }
 

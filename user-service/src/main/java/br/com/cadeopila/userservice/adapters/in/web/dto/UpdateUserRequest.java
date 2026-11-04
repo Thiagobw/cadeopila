@@ -1,6 +1,6 @@
 package br.com.cadeopila.userservice.adapters.in.web.dto;
 
-import jakarta.validation.constraints.Email;
+import br.com.cadeopila.userservice.core.domain.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -11,10 +11,14 @@ public record UpdateUserRequest(
         String name,
 
         @NotBlank(message = "Email é obrigatório")
-        @Email(message = "Email deve ser válido")
+        @jakarta.validation.constraints.Email(message = "Email deve ser válido")
         @Size(max = 150, message = "Email deve ter no máximo 150 caracteres")
         String email,
 
         @Size(min = 8, message = "Senha deve ter no mínimo 8 caracteres")
         String password
-) {}
+) {
+    public UpdateUserRequest {
+        email = Email.normalize(email);
+    }
+}

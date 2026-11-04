@@ -1,5 +1,6 @@
 package br.com.cadeopila.userservice.application.usecase;
 
+import br.com.cadeopila.userservice.core.domain.Email;
 import br.com.cadeopila.userservice.core.domain.User;
 import br.com.cadeopila.userservice.core.exception.UserAlreadyExistsException;
 import br.com.cadeopila.userservice.core.exception.UserNotFoundException;
@@ -29,8 +30,10 @@ public class UpdateUserUseCaseImpl implements UpdateUserUseCase {
         var existing = userRepository.findById(command.id())
                 .orElseThrow(() -> new UserNotFoundException(command.id()));
 
-        if (userRepository.existsByEmailAndIdNot(command.email(), command.id())) {
-            throw new UserAlreadyExistsException("email", command.email());
+        var normalizedEmail = new Email(command.email()).value();
+
+        if (userRepository.existsByEmailAndIdNot(normalizedEmail, command.id())) {
+            throw new UserAlreadyExistsException("email", normalizedEmail);
         }
 
         boolean changePassword = command.newRawPassword() != null
@@ -39,7 +42,7 @@ public class UpdateUserUseCaseImpl implements UpdateUserUseCase {
         var updated = new User(
                 existing.getId(),
                 command.name(),
-                command.email(),
+                normalizedEmail,
                 existing.getCpf(),
                 changePassword
                         ? passwordEncoder.encode(command.newRawPassword())

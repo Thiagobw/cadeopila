@@ -1,5 +1,6 @@
 package br.com.cadeopila.userservice.application.usecase;
 
+import br.com.cadeopila.userservice.core.domain.Email;
 import br.com.cadeopila.userservice.core.domain.User;
 import br.com.cadeopila.userservice.core.exception.UserAlreadyExistsException;
 import br.com.cadeopila.userservice.core.ports.in.CreateUserUseCase;
@@ -25,8 +26,10 @@ public class CreateUserUseCaseImpl implements CreateUserUseCase {
     @Override
     @Transactional
     public User create(Command command) {
-        if (userRepository.existsByEmail(command.email())) {
-            throw new UserAlreadyExistsException("email", command.email());
+        var normalizedEmail = new Email(command.email()).value();
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
+            throw new UserAlreadyExistsException("email", normalizedEmail);
         }
         if (userRepository.existsByCpf(command.cpf())) {
             throw new UserAlreadyExistsException("cpf", command.cpf());
@@ -36,7 +39,7 @@ public class CreateUserUseCaseImpl implements CreateUserUseCase {
         var user = new User(
                 null,
                 command.name(),
-                command.email(),
+                normalizedEmail,
                 command.cpf(),
                 passwordEncoder.encode(command.rawPassword()),
                 now,

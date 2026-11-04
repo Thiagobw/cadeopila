@@ -3,7 +3,10 @@ package br.com.cadeopila.userservice.adapters.out.persistence;
 import br.com.cadeopila.userservice.adapters.out.persistence.mapper.UserPersistenceMapper;
 import br.com.cadeopila.userservice.core.domain.PageResult;
 import br.com.cadeopila.userservice.core.domain.User;
+import br.com.cadeopila.userservice.core.exception.UserAlreadyExistsException;
 import br.com.cadeopila.userservice.core.ports.out.UserRepositoryPort;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
@@ -13,6 +16,9 @@ import java.util.UUID;
 
 @Component
 public class UserPersistenceAdapter implements UserRepositoryPort {
+
+    private static final String CONSTRAINT_EMAIL = "uq_users_email";
+    private static final String CONSTRAINT_CPF   = "uq_users_cpf";
 
     private final UserJpaRepository jpaRepository;
     private final UserPersistenceMapper mapper;
@@ -25,7 +31,11 @@ public class UserPersistenceAdapter implements UserRepositoryPort {
 
     @Override
     public User save(User user) {
-        return mapper.toDomain(jpaRepository.save(mapper.toJpaEntity(user)));
+        try {
+            return mapper.toDomain(jpaRepository.saveAndFlush(mapper.toJpaEntity(user)));
+        } catch (DataIntegrityViolationException ex) {
+            throw toConflictException(user, ex);
+        }
     }
 
     @Override
@@ -69,5 +79,28 @@ public class UserPersistenceAdapter implements UserRepositoryPort {
     @Override
     public void deleteById(UUID id) {
         jpaRepository.deleteById(id);
+    }
+
+    private UserAlreadyExistsException toConflictException(User user,
+                                                           DataIntegrityViolationException ex) {
+        String constraint = extractConstraintName(ex);
+        if (CONSTRAINT_EMAIL.equals(constraint)) {
+            return new UserAlreadyExistsException("email", user.getEmail());
+        }
+        if (CONSTRAINT_CPF.equals(constraint)) {
+            return new UserAlreadyExistsException("cpf", user.maskedCpf());
+        }
+        return new UserAlreadyExistsException("campo único", "");
+    }
+
+    private String extractConstraintName(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getCause();
+        while (cause != null) {
+            if (cause instanceof ConstraintViolationException cve) {
+                return cve.getConstraintName();
+            }
+            cause = cause.getCause();
+        }
+        return null;
     }
 }
