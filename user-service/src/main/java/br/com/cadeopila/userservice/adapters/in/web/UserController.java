@@ -5,6 +5,7 @@ import br.com.cadeopila.userservice.adapters.in.web.dto.PagedResponse;
 import br.com.cadeopila.userservice.adapters.in.web.dto.UpdateUserRequest;
 import br.com.cadeopila.userservice.adapters.in.web.dto.UserResponse;
 import br.com.cadeopila.userservice.adapters.in.web.mapper.UserWebMapper;
+import br.com.cadeopila.userservice.core.domain.PageQuery;
 import br.com.cadeopila.userservice.core.ports.in.CreateUserUseCase;
 import br.com.cadeopila.userservice.core.ports.in.DeleteUserUseCase;
 import br.com.cadeopila.userservice.core.ports.in.FindUserByIdUseCase;
@@ -13,7 +14,11 @@ import br.com.cadeopila.userservice.core.ports.in.UpdateUserUseCase;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +32,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.UUID;
 
+@Validated
 @Tag(name = "Usuários", description = "Gerenciamento de perfis de usuário")
 @RestController
 @RequestMapping("/api/v1/users")
@@ -62,12 +68,15 @@ public class UserController {
         return ResponseEntity.created(location).body(mapper.toResponse(user));
     }
 
-    @Operation(summary = "Listar usuários (paginado, máx. 100 por página)")
+    @Operation(summary = "Listar usuários (paginado, máx. " + PageQuery.MAX_SIZE + " por página)")
     @GetMapping
     public ResponseEntity<PagedResponse<UserResponse>> list(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        var result = listUsers.list(page, size);
+            @RequestParam(defaultValue = "0")
+            @PositiveOrZero(message = "deve ser maior ou igual a 0") int page,
+            @RequestParam(defaultValue = "20")
+            @Min(value = 1, message = "deve ser maior ou igual a 1")
+            @Max(value = PageQuery.MAX_SIZE, message = "deve ser no máximo " + PageQuery.MAX_SIZE) int size) {
+        var result = listUsers.list(new PageQuery(page, size));
         var content = result.content().stream().map(mapper::toResponse).toList();
         return ResponseEntity.ok(new PagedResponse<>(content, result.totalElements(),
                 result.totalPages(), result.pageNumber(), result.pageSize()));

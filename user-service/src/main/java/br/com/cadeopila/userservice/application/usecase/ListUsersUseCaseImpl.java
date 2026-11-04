@@ -1,5 +1,6 @@
 package br.com.cadeopila.userservice.application.usecase;
 
+import br.com.cadeopila.userservice.core.domain.PageQuery;
 import br.com.cadeopila.userservice.core.domain.PageResult;
 import br.com.cadeopila.userservice.core.domain.User;
 import br.com.cadeopila.userservice.core.ports.in.ListUsersUseCase;
@@ -18,8 +19,7 @@ public class ListUsersUseCaseImpl implements ListUsersUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResult<User> list(int page, int size) {
-        int cappedSize = Math.min(Math.max(size, 1), 100);
-        return userRepository.findAll(page, cappedSize);
+    public PageResult<User> list(PageQuery query) {
+        return userRepository.findAll(query.page(), query.size());
     }
 }
