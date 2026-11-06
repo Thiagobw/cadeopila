@@ -20,6 +20,7 @@
 		<java.version>25</java.version>
 		<springdoc.version>3.2.0</springdoc.version>
 		<jacoco.version>0.8.15</jacoco.version>
+		<archunit.version>1.5.1</archunit.version>
 	</properties>
 
 	<dependencies>
@@ -78,6 +79,14 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Teste de arquitetura hexagonal -->
+		<dependency>
+			<groupId>com.tngtech.archunit</groupId>
+			<artifactId>archunit-junit5</artifactId>
+			<version>${archunit.version}</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
