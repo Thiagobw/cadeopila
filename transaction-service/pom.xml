@@ -36,6 +36,12 @@
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
 
+		<!-- RestClient (clientes HTTP: MockAPI de contas e BrasilAPI) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-restclient</artifactId>
+		</dependency>
+
 		<!-- Flyway -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
