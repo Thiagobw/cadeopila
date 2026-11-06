@@ -30,4 +30,14 @@ public class RestClientConfig {
                 .requestFactory(transactionHttpRequestFactory)
                 .build();
     }
+
+    @Bean
+    public RestClient exchangeRestClient(RestClient.Builder builder,
+                                         ClientHttpRequestFactory transactionHttpRequestFactory,
+                                         AppProperties props) {
+        return builder
+                .baseUrl(props.exchange().baseUrl())
+                .requestFactory(transactionHttpRequestFactory)
+                .build();
+    }
 }
