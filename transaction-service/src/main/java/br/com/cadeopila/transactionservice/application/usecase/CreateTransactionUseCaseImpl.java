@@ -23,13 +23,16 @@ import java.time.ZoneId;
 import java.util.List;
 
 /**
- * Processa a criação de uma transação. <b>Sem {@code @Transactional}</b>: as chamadas HTTP não podem
- * rodar com a conexão de banco aberta e a compensação do saldo precisa acontecer dentro do try/catch.
- * A fronteira transacional fica no {@code save} do adapter de persistência.
+ * Processa a criação de uma transação. <b>Sem {@code @Transactional}</b>: a consulta HTTP à API de
+ * contas não pode rodar com a conexão de banco aberta. A API de contas é <b>somente leitura</b>
+ * (saldo inicial + limites), consultada a cada transação; o saldo atual é derivado somando o
+ * histórico aprovado do MS2 (depósitos somam, saídas subtraem) — o saldo nunca é persistido nem
+ * gravado de volta na Mock, evitando duas fontes do mesmo dado.
  *
  * <p>Fluxo: valida invariantes (antes de qualquer I/O) → cota câmbio (snapshot) → busca a conta →
- * decide via {@link TransactionPolicy} → se aprovada grava o novo saldo no mock → persiste a transação.
- * Rejeição de negócio é resultado válido: grava REJECTED e responde 201.</p>
+ * deriva o saldo atual → decide via {@link TransactionPolicy} → persiste. Rejeição de negócio é
+ * resultado válido: grava REJECTED e responde 201. A Mock fora do ar vira REJECTED com motivo
+ * (sem travar a requisição, graças ao timeout do cliente).</p>
  */
 @Service
 public class CreateTransactionUseCaseImpl implements CreateTransactionUseCase {
@@ -67,7 +70,7 @@ public class CreateTransactionUseCaseImpl implements CreateTransactionUseCase {
         // 2) Câmbio é snapshot e aparece em toda transação gravada (aprovada ou rejeitada).
         var quotes = toQuotes(data.amount(), quoteDate);
 
-        // 3) Conta do dono.
+        // 3) Conta do dono (somente leitura: saldo inicial + limites).
         AccountSnapshot account;
         try {
             var found = accountPort.findByUserId(data.userId());
@@ -80,38 +83,27 @@ public class CreateTransactionUseCaseImpl implements CreateTransactionUseCase {
             return persistRejected(data, RejectionReason.ACCOUNT_SERVICE_UNAVAILABLE, now, quotes, null);
         }
 
-        // 4) Decisão de negócio (depósito não passa por limites).
+        // 4) Saldo atual = saldo inicial da Mock + histórico aprovado no MS2.
+        var currentBalance = account.balance().add(transactionRepository.sumApprovedSignedAmount(data.userId()));
+
+        // 5) Decisão de negócio (depósito não passa por limites).
         var outflowsToday = data.type().isOutflow()
                 ? transactionRepository.sumApprovedOutflowsOfDay(data.userId(), dayStart(quoteDate), dayEnd(quoteDate))
                 : BigDecimal.ZERO;
-        var rejection = policy.evaluate(data.type(), data.amount(), account, outflowsToday);
+        var rejection = policy.evaluate(data.type(), data.amount(), currentBalance,
+                account.transactionLimit(), account.dailyLimit(), outflowsToday);
         if (rejection.isPresent()) {
-            return persistRejected(data, rejection.get(), now, quotes, account.balance());
+            return persistRejected(data, rejection.get(), now, quotes, currentBalance);
         }
 
-        // 5) Aprovada: grava o novo saldo no mock antes de persistir.
-        var newBalance = data.type().isOutflow()
-                ? account.balance().subtract(data.amount())
-                : account.balance().add(data.amount());
-        try {
-            accountPort.updateBalance(withBalance(account, newBalance));
-        } catch (AccountUnavailableException ex) {
-            log.warn("Falha ao gravar saldo na API de contas; transação REJECTED (userId={})", data.userId());
-            return persistRejected(data, RejectionReason.ACCOUNT_SERVICE_UNAVAILABLE, now, quotes, null);
-        }
-
-        // 6) Persiste; se falhar depois de alterar o mock, compensa o saldo anterior e propaga (500).
+        // 6) Aprovada: persiste. O saldo exibido é derivado (saldo atual ± valor); não grava na Mock.
+        var balanceAfter = data.type().isOutflow()
+                ? currentBalance.subtract(data.amount())
+                : currentBalance.add(data.amount());
         var approved = Transaction.approved(data, now, quotes, now);
-        try {
-            var saved = transactionRepository.save(approved);
-            logCreated(saved);
-            return new Result(saved, newBalance);
-        } catch (RuntimeException ex) {
-            log.error("Falha ao persistir após alterar o saldo; compensando saldo anterior (userId={})",
-                    data.userId(), ex);
-            compensate(account);
-            throw ex;
-        }
+        var saved = transactionRepository.save(approved);
+        logCreated(saved);
+        return new Result(saved, balanceAfter);
     }
 
     private List<ExchangeQuote> toQuotes(BigDecimal amount, LocalDate date) {
@@ -126,19 +118,6 @@ public class CreateTransactionUseCaseImpl implements CreateTransactionUseCase {
         var saved = transactionRepository.save(rejected);
         logCreated(saved);
         return new Result(saved, balanceAfter);
-    }
-
-    private void compensate(AccountSnapshot original) {
-        try {
-            accountPort.updateBalance(original);
-        } catch (RuntimeException ex) {
-            log.error("Falha ao compensar o saldo na API de contas", ex);
-        }
-    }
-
-    private AccountSnapshot withBalance(AccountSnapshot account, BigDecimal newBalance) {
-        return new AccountSnapshot(account.accountId(), account.userId(), newBalance,
-                account.dailyLimit(), account.transactionLimit());
     }
 
     private Instant dayStart(LocalDate date) {

@@ -1,6 +1,5 @@
 package br.com.cadeopila.transactionservice.adapters.out.account;
 
-import br.com.cadeopila.transactionservice.core.domain.AccountSnapshot;
 import br.com.cadeopila.transactionservice.core.exception.AccountUnavailableException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -9,13 +8,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
-import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
@@ -37,10 +33,11 @@ class AccountRestClientAdapterTest {
     }
 
     @Test
-    @DisplayName("findByUserId deve retornar o snapshot quando a conta existe")
+    @DisplayName("findByUserId deve retornar o snapshot (saldo inicial + limites) quando a conta existe")
     void findByUserIdDeveRetornarSnapshot() {
         server.expect(requestTo(BASE_URL + "/accounts?userId=" + USER_ID))
-                .andExpect(method(org.springframework.http.HttpMethod.GET))
+                .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers
+                        .method(org.springframework.http.HttpMethod.GET))
                 .andRespond(withSuccess("""
                         [{"id":"1","userId":"%s","balance":1500.00,"dailyLimit":1000.00,"transactionLimit":500.00}]
                         """.formatted(USER_ID), MediaType.APPLICATION_JSON));
@@ -48,7 +45,6 @@ class AccountRestClientAdapterTest {
         var snapshot = adapter.findByUserId(USER_ID);
 
         assertThat(snapshot).isPresent();
-        assertThat(snapshot.get().accountId()).isEqualTo("1");
         assertThat(snapshot.get().userId()).isEqualTo(USER_ID);
         assertThat(snapshot.get().balance()).isEqualByComparingTo("1500.00");
         assertThat(snapshot.get().dailyLimit()).isEqualByComparingTo("1000.00");
@@ -110,22 +106,6 @@ class AccountRestClientAdapterTest {
 
         assertThatThrownBy(() -> adapter.findByUserId(USER_ID))
                 .isInstanceOf(AccountUnavailableException.class);
-        server.verify();
-    }
-
-    @Test
-    @DisplayName("updateBalance deve fazer PUT no accountId reenviando os limites com o novo saldo")
-    void updateBalanceDeveFazerPut() {
-        server.expect(requestTo(BASE_URL + "/accounts/1"))
-                .andExpect(method(org.springframework.http.HttpMethod.PUT))
-                .andExpect(jsonPath("$.balance").value(1350.00))
-                .andExpect(jsonPath("$.dailyLimit").value(1000.00))
-                .andExpect(jsonPath("$.transactionLimit").value(500.00))
-                .andRespond(withSuccess());
-
-        adapter.updateBalance(new AccountSnapshot("1", USER_ID,
-                new BigDecimal("1350.00"), new BigDecimal("1000.00"), new BigDecimal("500.00")));
-
         server.verify();
     }
 }

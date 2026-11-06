@@ -23,8 +23,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -52,7 +50,7 @@ class CreateTransactionIntegrationTest {
 
     private void accountWith(String balance, String dailyLimit, String transactionLimit) {
         when(accountPort.findByUserId(USER)).thenReturn(java.util.Optional.of(
-                new AccountSnapshot("1", USER, new BigDecimal(balance),
+                new AccountSnapshot(USER, new BigDecimal(balance),
                         new BigDecimal(dailyLimit), new BigDecimal(transactionLimit))));
     }
 
@@ -78,7 +76,6 @@ class CreateTransactionIntegrationTest {
                 .andExpect(jsonPath("$.exchange.quotes[0].convertedAmount").value(30.00))
                 .andExpect(jsonPath("$.account.balanceAfter").value(850.00));
 
-        verify(accountPort).updateBalance(any());
         assertThat(jpaRepository.count()).isEqualTo(1);
     }
 
@@ -98,7 +95,6 @@ class CreateTransactionIntegrationTest {
                 .andExpect(jsonPath("$.rejectionReason").value("INSUFFICIENT_BALANCE"))
                 .andExpect(jsonPath("$.account.balanceAfter").value(50.00));
 
-        verify(accountPort, never()).updateBalance(any());
         assertThat(jpaRepository.count()).isEqualTo(1);
     }
 

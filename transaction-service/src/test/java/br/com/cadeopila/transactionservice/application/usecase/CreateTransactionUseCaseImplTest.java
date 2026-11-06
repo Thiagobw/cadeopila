@@ -3,6 +3,7 @@ package br.com.cadeopila.transactionservice.application.usecase;
 import br.com.cadeopila.transactionservice.core.domain.AccountSnapshot;
 import br.com.cadeopila.transactionservice.core.domain.ExchangeRate;
 import br.com.cadeopila.transactionservice.core.domain.RejectionReason;
+import br.com.cadeopila.transactionservice.core.domain.TransactionCategory;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import br.com.cadeopila.transactionservice.core.domain.TransactionStatus;
 import br.com.cadeopila.transactionservice.core.domain.TransactionType;
@@ -61,8 +62,7 @@ class CreateTransactionUseCaseImplTest {
     }
 
     private AccountSnapshot account(String balance, String dailyLimit, String transactionLimit) {
-        return new AccountSnapshot("acc-1", USER,
-                new BigDecimal(balance), new BigDecimal(dailyLimit), new BigDecimal(transactionLimit));
+        return new AccountSnapshot(USER, new BigDecimal(balance), new BigDecimal(dailyLimit), new BigDecimal(transactionLimit));
     }
 
     private ExchangeRate usdRate() {
@@ -76,20 +76,17 @@ class CreateTransactionUseCaseImplTest {
     }
 
     @Test
-    @DisplayName("Deve aprovar depósito, somar ao saldo no mock e gravar a transação com câmbio")
+    @DisplayName("Deve aprovar depósito e somar ao saldo derivado, gravando a transação com câmbio")
     void deveAprovarDeposito() {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result = useCase().create(new Command(USER, TransactionType.DEPOSIT, new BigDecimal("500.00"),
                 "Depósito", null, null));
 
-        var balanceCaptor = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(accountPort).updateBalance(balanceCaptor.capture());
-        assertThat(balanceCaptor.getValue().balance()).isEqualByComparingTo("1500.00");
         verify(transactionRepository, never()).sumApprovedOutflowsOfDay(any(), any(), any());
-
         assertThat(result.transaction().getStatus()).isEqualTo(TransactionStatus.APPROVED);
         assertThat(result.balanceAfter()).isEqualByComparingTo("1500.00");
         assertThat(result.transaction().getExchangeQuotes()).hasSize(1);
@@ -97,35 +94,50 @@ class CreateTransactionUseCaseImplTest {
     }
 
     @Test
-    @DisplayName("Deve aprovar saque dentro dos limites e subtrair do saldo")
+    @DisplayName("Deve aprovar saque dentro dos limites e devolver o saldo derivado menos o valor")
     void deveAprovarSaque() {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result = useCase().create(new Command(USER, TransactionType.WITHDRAWAL, new BigDecimal("200.00"),
                 "Saque", null, null));
 
-        var balanceCaptor = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(accountPort).updateBalance(balanceCaptor.capture());
-        assertThat(balanceCaptor.getValue().balance()).isEqualByComparingTo("800.00");
         assertThat(result.transaction().getStatus()).isEqualTo(TransactionStatus.APPROVED);
         assertThat(result.balanceAfter()).isEqualByComparingTo("800.00");
     }
 
     @Test
-    @DisplayName("Deve rejeitar por saldo insuficiente, NÃO alterar o mock e gravar a transação rejeitada")
+    @DisplayName("Deve derivar o saldo atual do saldo inicial da Mock mais o histórico aprovado")
+    void deveDerivarSaldoDoHistorico() {
+        when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
+        when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
+        // histórico aprovado soma +200 → saldo atual 1200
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(new BigDecimal("200.00"));
+        when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = useCase().create(new Command(USER, TransactionType.WITHDRAWAL, new BigDecimal("300.00"),
+                "Saque", null, null));
+
+        assertThat(result.transaction().getStatus()).isEqualTo(TransactionStatus.APPROVED);
+        assertThat(result.balanceAfter()).isEqualByComparingTo("900.00");
+    }
+
+    @Test
+    @DisplayName("Deve rejeitar por saldo insuficiente (derivado) e gravar a transação rejeitada")
     void deveRejeitarSaldoInsuficienteEGravar() {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("50.00", "10000.00", "5000.00")));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result = useCase().create(new Command(USER, TransactionType.WITHDRAWAL, new BigDecimal("100.00"),
                 "Saque", null, null));
 
-        verify(accountPort, never()).updateBalance(any());
         var saved = captureSaved();
         assertThat(saved.getStatus()).isEqualTo(TransactionStatus.REJECTED);
         assertThat(saved.getRejectionReason()).isEqualTo(RejectionReason.INSUFFICIENT_BALANCE);
@@ -140,9 +152,8 @@ class CreateTransactionUseCaseImplTest {
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result = useCase().create(new Command(USER, TransactionType.PURCHASE, new BigDecimal("10.00"),
-                "Compra", br.com.cadeopila.transactionservice.core.domain.TransactionCategory.FOOD, null));
+                "Compra", TransactionCategory.FOOD, null));
 
-        verify(accountPort, never()).updateBalance(any());
         var saved = captureSaved();
         assertThat(saved.getStatus()).isEqualTo(TransactionStatus.REJECTED);
         assertThat(saved.getRejectionReason()).isEqualTo(RejectionReason.ACCOUNT_NOT_FOUND);
@@ -167,43 +178,16 @@ class CreateTransactionUseCaseImplTest {
     }
 
     @Test
-    @DisplayName("Deve rejeitar com ACCOUNT_SERVICE_UNAVAILABLE quando a gravação do saldo falha")
-    void deveRejeitarFalhaAoGravarSaldo() {
+    @DisplayName("Deve propagar (500) quando a persistência falha — sem gravar saldo na Mock (read-only)")
+    void devePropagarQuandoPersistenciaFalha() {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
-        when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
-        doThrowAccountUnavailableOnUpdate();
-        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        var result = useCase().create(new Command(USER, TransactionType.WITHDRAWAL, new BigDecimal("200.00"),
-                "Saque", null, null));
-
-        var saved = captureSaved();
-        assertThat(saved.getStatus()).isEqualTo(TransactionStatus.REJECTED);
-        assertThat(saved.getRejectionReason()).isEqualTo(RejectionReason.ACCOUNT_SERVICE_UNAVAILABLE);
-        assertThat(result.balanceAfter()).isNull();
-    }
-
-    private void doThrowAccountUnavailableOnUpdate() {
-        org.mockito.Mockito.doThrow(new AccountUnavailableException("falha ao gravar"))
-                .when(accountPort).updateBalance(any());
-    }
-
-    @Test
-    @DisplayName("Deve compensar o saldo anterior e propagar quando a persistência falha após alterar o mock")
-    void deveCompensarEPropagar() {
-        when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
-        when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenThrow(new RuntimeException("falha ao persistir"));
 
         assertThatThrownBy(() -> useCase().create(new Command(USER, TransactionType.DEPOSIT, new BigDecimal("500.00"),
                 "Depósito", null, null)))
                 .isInstanceOf(RuntimeException.class);
-
-        var balanceCaptor = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(accountPort, org.mockito.Mockito.times(2)).updateBalance(balanceCaptor.capture());
-        assertThat(balanceCaptor.getAllValues().get(0).balance()).isEqualByComparingTo("1500.00");
-        assertThat(balanceCaptor.getAllValues().get(1).balance()).isEqualByComparingTo("1000.00");
     }
 
     @Test
@@ -223,6 +207,7 @@ class CreateTransactionUseCaseImplTest {
         var clock = Clock.fixed(Instant.parse("2026-11-07T01:00:00Z"), ZoneOffset.UTC);
         when(exchangeRatePort.quoteAll(LocalDate.of(2026, 11, 6))).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         useCase(clock).create(new Command(USER, TransactionType.DEPOSIT, new BigDecimal("500.00"),
@@ -236,6 +221,7 @@ class CreateTransactionUseCaseImplTest {
     void cambioIndisponivelNaoBloqueia() {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of());
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result = useCase().create(new Command(USER, TransactionType.DEPOSIT, new BigDecimal("500.00"),

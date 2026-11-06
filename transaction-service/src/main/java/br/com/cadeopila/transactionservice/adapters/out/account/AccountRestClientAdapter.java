@@ -7,7 +7,6 @@ import br.com.cadeopila.transactionservice.core.ports.out.AccountPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
@@ -19,9 +18,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Adapter da {@link AccountPort} sobre o MockAPI de contas. Nunca deixa uma exceção HTTP escapar:
- * conta ausente → {@code Optional.empty()}; falha técnica → {@link AccountUnavailableException}.
- * Os logs não registram a URL da API de contas (sensível).
+ * Adapter da {@link AccountPort} sobre o MockAPI de contas — somente leitura (saldo inicial e limites).
+ * Nunca deixa uma exceção HTTP escapar: conta ausente → {@code Optional.empty()};
+ * falha técnica → {@link AccountUnavailableException}. Os logs não registram a URL (token sensível).
  */
 @Component
 public class AccountRestClientAdapter implements AccountPort {
@@ -64,31 +63,8 @@ public class AccountRestClientAdapter implements AccountPort {
         return Optional.of(toSnapshot(matches.getFirst()));
     }
 
-    @Override
-    public void updateBalance(AccountSnapshot account) {
-        var payload = new AccountApiModel(
-                account.accountId(),
-                account.userId().toString(),
-                account.balance(),
-                account.dailyLimit(),
-                account.transactionLimit());
-        try {
-            restClient.put()
-                    .uri("/accounts/{id}", account.accountId())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(payload)
-                    .retrieve()
-                    .toBodilessEntity();
-        } catch (RestClientException ex) {
-            log.warn("Falha ao atualizar saldo na API de contas (accountId={}, erro={})",
-                    account.accountId(), ex.getClass().getSimpleName());
-            throw new AccountUnavailableException("Falha ao atualizar saldo na API de contas");
-        }
-    }
-
     private AccountSnapshot toSnapshot(AccountApiModel model) {
         return new AccountSnapshot(
-                model.id(),
                 UUID.fromString(model.userId()),
                 model.balance(),
                 model.dailyLimit(),
