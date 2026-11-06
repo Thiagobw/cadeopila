@@ -1,5 +1,6 @@
 package br.com.cadeopila.transactionservice.adapters.out.exchange;
 
+import br.com.cadeopila.transactionservice.adapters.config.AppProperties;
 import br.com.cadeopila.transactionservice.adapters.out.exchange.dto.BrasilApiCambioResponse;
 import br.com.cadeopila.transactionservice.adapters.out.exchange.dto.BrasilApiCambioResponse.Cotacao;
 import br.com.cadeopila.transactionservice.core.domain.ExchangeRate;
@@ -18,6 +19,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -25,8 +27,8 @@ import java.util.Optional;
 
 /**
  * Adapter da {@link ExchangeRatePort} sobre a BrasilAPI (câmbio PTAX, cotação de venda).
- * Tolerante a falha: qualquer erro (4xx/5xx/timeout/rede) resulta em {@code Optional.empty()}
- * e nunca bloqueia a criação da transação. Em "sem dados" (lista vazia) retrocede até 7 dias.
+ * Tolerante a falha: qualquer erro (4xx/5xx/timeout/rede) numa moeda resulta em ausência dessa
+ * cotação, nunca bloqueia a transação. Em "sem dados" (lista vazia) retrocede até 7 dias.
  */
 @Component
 public class ExchangeRestClientAdapter implements ExchangeRatePort {
@@ -43,13 +45,24 @@ public class ExchangeRestClientAdapter implements ExchangeRatePort {
             .toFormatter(Locale.ROOT);
 
     private final RestClient restClient;
+    private final List<String> currencies;
 
-    public ExchangeRestClientAdapter(@Qualifier("exchangeRestClient") RestClient restClient) {
+    public ExchangeRestClientAdapter(@Qualifier("exchangeRestClient") RestClient restClient,
+                                     AppProperties properties) {
         this.restClient = restClient;
+        this.currencies = properties.exchange().currencies();
     }
 
     @Override
-    public Optional<ExchangeRate> quote(String currency, LocalDate date) {
+    public List<ExchangeRate> quoteAll(LocalDate date) {
+        var rates = new ArrayList<ExchangeRate>(currencies.size());
+        for (var currency : currencies) {
+            quote(currency, date).ifPresent(rates::add);
+        }
+        return rates;
+    }
+
+    private Optional<ExchangeRate> quote(String currency, LocalDate date) {
         var queryDate = date;
         for (int attempt = 0; attempt < MAX_LOOKBACK_DAYS; attempt++, queryDate = queryDate.minusDays(1)) {
             BrasilApiCambioResponse response;
