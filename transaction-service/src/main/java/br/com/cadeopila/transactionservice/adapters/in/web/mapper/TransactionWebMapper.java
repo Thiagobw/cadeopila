@@ -5,6 +5,7 @@ import br.com.cadeopila.transactionservice.adapters.in.web.dto.CreateTransaction
 import br.com.cadeopila.transactionservice.adapters.in.web.dto.CreateTransactionResponse;
 import br.com.cadeopila.transactionservice.adapters.in.web.dto.ExchangeQuoteResponse;
 import br.com.cadeopila.transactionservice.adapters.in.web.dto.ExchangeResponse;
+import br.com.cadeopila.transactionservice.adapters.in.web.dto.TransactionResponse;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import br.com.cadeopila.transactionservice.core.ports.in.CreateTransactionUseCase;
 import org.springframework.stereotype.Component;
@@ -32,6 +33,23 @@ public class TransactionWebMapper {
                 transaction.getRejectionReason(),
                 toExchange(transaction),
                 new AccountResponse(result.balanceAfter()));
+    }
+
+    public TransactionResponse toResponse(Transaction transaction) {
+        return new TransactionResponse(
+                transaction.getId(),
+                transaction.getUserId(),
+                transaction.getDestinationUserId(),
+                transaction.getType(),
+                transaction.getAmount(),
+                transaction.getDescription(),
+                transaction.getCategory(),
+                transaction.getStatus(),
+                transaction.getRejectionReason(),
+                transaction.getOccurredAt(),
+                transaction.getCreatedAt(),
+                transaction.getUpdatedAt(),
+                toExchange(transaction));
     }
 
     private ExchangeResponse toExchange(Transaction transaction) {
