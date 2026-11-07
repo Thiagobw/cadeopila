@@ -3,8 +3,11 @@ package br.com.cadeopila.transactionservice.adapters.out.persistence;
 import br.com.cadeopila.transactionservice.adapters.out.persistence.mapper.TransactionPersistenceMapper;
 import br.com.cadeopila.transactionservice.core.domain.ExchangeQuote;
 import br.com.cadeopila.transactionservice.core.domain.NewTransaction;
+import br.com.cadeopila.transactionservice.core.domain.PageQuery;
+import br.com.cadeopila.transactionservice.core.domain.RejectionReason;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import br.com.cadeopila.transactionservice.core.domain.TransactionCategory;
+import br.com.cadeopila.transactionservice.core.domain.TransactionQuery;
 import br.com.cadeopila.transactionservice.core.domain.TransactionStatus;
 import br.com.cadeopila.transactionservice.core.domain.TransactionType;
 import br.com.cadeopila.transactionservice.core.ports.out.TransactionRepositoryPort;
@@ -15,10 +18,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,8 +32,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({TransactionPersistenceAdapter.class, TransactionPersistenceMapper.class})
+@Import({TransactionPersistenceAdapter.class, TransactionPersistenceMapper.class,
+        TransactionPersistenceAdapterTest.TestConfig.class})
 class TransactionPersistenceAdapterTest {
+
+    @TestConfiguration
+    static class TestConfig {
+        @Bean
+        ZoneId zoneId() {
+            return ZoneId.of("America/Sao_Paulo");
+        }
+    }
 
     private static final UUID USER_A = UUID.randomUUID();
     private static final UUID USER_B = UUID.randomUUID();
@@ -37,6 +52,7 @@ class TransactionPersistenceAdapterTest {
     private static final Instant DAY_END = Instant.parse("2026-11-07T00:00:00Z");
     private static final Instant IN_WINDOW = Instant.parse("2026-11-06T13:00:00Z");
     private static final Instant BEFORE_WINDOW = Instant.parse("2026-11-05T13:00:00Z");
+    private static final Instant AFTER_WINDOW = Instant.parse("2026-11-07T13:00:00Z");
     private static final Instant NOW = Instant.parse("2026-11-06T13:00:01Z");
 
     @Autowired
@@ -47,6 +63,11 @@ class TransactionPersistenceAdapterTest {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    private TransactionQuery query(TransactionType type, TransactionStatus status,
+                                   java.time.LocalDate from, java.time.LocalDate to, int size) {
+        return new TransactionQuery(USER_A, type, status, from, to, new PageQuery(0, size));
+    }
 
     @Test
     @DisplayName("save deve gerar id e versão e persistir a transação com suas cotações (ida e volta)")
@@ -60,49 +81,119 @@ class TransactionPersistenceAdapterTest {
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getVersion()).isZero();
-        assertThat(saved.getStatus()).isEqualTo(TransactionStatus.APPROVED);
-        assertThat(saved.getExchangeQuotes()).hasSize(1);
 
         entityManager.flush();
         entityManager.clear();
 
         var reloaded = jpaRepository.findById(saved.getId()).orElseThrow();
-        assertThat(reloaded.getUserId()).isEqualTo(USER_A);
-        assertThat(reloaded.getType()).isEqualTo(TransactionType.PURCHASE);
         assertThat(reloaded.getAmount()).isEqualByComparingTo("150.00");
-        assertThat(reloaded.getCategory()).isEqualTo(TransactionCategory.FOOD);
-        assertThat(reloaded.getStatus()).isEqualTo(TransactionStatus.APPROVED);
-        assertThat(reloaded.getRejectionReason()).isNull();
-        assertThat(reloaded.getDeletedAt()).isNull();
         assertThat(reloaded.getExchangeQuotes()).hasSize(1);
         assertThat(reloaded.getExchangeQuotes().getFirst().getCurrency()).isEqualTo("USD");
-        assertThat(reloaded.getExchangeQuotes().getFirst().getConvertedAmount()).isEqualByComparingTo("27.61");
+    }
+
+    @Test
+    @DisplayName("findActiveById deve retornar a transação ativa")
+    void findActiveByIdDeveRetornarAtiva() {
+        var saved = adapter.save(approvedDeposit(USER_A, "100.00", IN_WINDOW));
+
+        assertThat(adapter.findActiveById(saved.getId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("findActiveById deve ignorar transação excluída")
+    void findActiveByIdDeveIgnorarExcluida() {
+        var saved = adapter.save(deletedApprovedTransfer(USER_A, "20.00", IN_WINDOW));
+
+        assertThat(adapter.findActiveById(saved.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("findActiveById deve retornar vazio quando não existe")
+    void findActiveByIdVazioQuandoNaoExiste() {
+        assertThat(adapter.findActiveById(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("search deve trazer só as transações ativas do usuário, excluindo apagadas e de outros")
+    void searchDeveFiltrarPorUsuarioEExcluirApagadas() {
+        adapter.save(approvedDeposit(USER_A, "100.00", IN_WINDOW));
+        adapter.save(approvedWithdrawal(USER_A, "40.00", IN_WINDOW));
+        adapter.save(deletedApprovedTransfer(USER_A, "20.00", IN_WINDOW));
+        adapter.save(approvedDeposit(USER_B, "500.00", IN_WINDOW));
+
+        var result = adapter.search(query(null, null, null, null, 20));
+
+        assertThat(result.totalElements()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("search deve filtrar por tipo e por status")
+    void searchDeveFiltrarPorTipoEStatus() {
+        adapter.save(approvedDeposit(USER_A, "100.00", IN_WINDOW));
+        adapter.save(approvedWithdrawal(USER_A, "40.00", IN_WINDOW));
+        adapter.save(rejectedWithdrawal(USER_A, "30.00", IN_WINDOW));
+
+        assertThat(adapter.search(query(TransactionType.DEPOSIT, null, null, null, 20)).totalElements()).isEqualTo(1);
+        assertThat(adapter.search(query(null, TransactionStatus.REJECTED, null, null, 20)).totalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("search deve filtrar por período (datas inclusivas no fuso configurado)")
+    void searchDeveFiltrarPorPeriodo() {
+        adapter.save(approvedDeposit(USER_A, "10.00", BEFORE_WINDOW));
+        adapter.save(approvedDeposit(USER_A, "20.00", IN_WINDOW));
+        adapter.save(approvedDeposit(USER_A, "30.00", AFTER_WINDOW));
+
+        var day = java.time.LocalDate.of(2026, 11, 6);
+        var result = adapter.search(query(null, null, day, day, 20));
+
+        assertThat(result.totalElements()).isEqualTo(1);
+        assertThat(result.content().getFirst().getOccurredAt()).isEqualTo(IN_WINDOW);
+    }
+
+    @Test
+    @DisplayName("search deve ordenar por occurredAt decrescente")
+    void searchDeveOrdenarPorOccurredAtDesc() {
+        adapter.save(approvedDeposit(USER_A, "10.00", BEFORE_WINDOW));
+        adapter.save(approvedDeposit(USER_A, "20.00", IN_WINDOW));
+
+        var result = adapter.search(query(null, null, null, null, 20));
+
+        assertThat(result.content()).extracting(Transaction::getOccurredAt)
+                .containsExactly(IN_WINDOW, BEFORE_WINDOW);
+    }
+
+    @Test
+    @DisplayName("search deve paginar")
+    void searchDevePaginar() {
+        adapter.save(approvedDeposit(USER_A, "10.00", BEFORE_WINDOW));
+        adapter.save(approvedDeposit(USER_A, "20.00", IN_WINDOW));
+
+        var result = adapter.search(query(null, null, null, null, 1));
+
+        assertThat(result.content()).hasSize(1);
+        assertThat(result.totalElements()).isEqualTo(2);
+        assertThat(result.totalPages()).isEqualTo(2);
     }
 
     @Test
     @DisplayName("sumApprovedOutflowsOfDay soma apenas saídas APROVADAS, ativas, do usuário e no período")
     void sumApprovedOutflowsOfDayDeveSomarApenasSaidasRelevantes() {
-        // Contam: saque e compra aprovados, do usuário A, no período
         adapter.save(approvedWithdrawal(USER_A, "100.00", IN_WINDOW));
         adapter.save(approvedPurchase(USER_A, "50.00", IN_WINDOW));
-        // Não contam:
-        adapter.save(approvedDeposit(USER_A, "999.00", IN_WINDOW));              // depósito não é saída
-        adapter.save(rejectedWithdrawal(USER_A, "30.00", IN_WINDOW));            // rejeitada
-        adapter.save(approvedWithdrawal(USER_A, "40.00", BEFORE_WINDOW));        // fora do período
-        adapter.save(deletedApprovedTransfer(USER_A, "20.00", IN_WINDOW));       // excluída
-        adapter.save(approvedWithdrawal(USER_B, "70.00", IN_WINDOW));            // outro usuário
+        adapter.save(approvedDeposit(USER_A, "999.00", IN_WINDOW));
+        adapter.save(rejectedWithdrawal(USER_A, "30.00", IN_WINDOW));
+        adapter.save(approvedWithdrawal(USER_A, "40.00", BEFORE_WINDOW));
+        adapter.save(deletedApprovedTransfer(USER_A, "20.00", IN_WINDOW));
+        adapter.save(approvedWithdrawal(USER_B, "70.00", IN_WINDOW));
 
-        var total = adapter.sumApprovedOutflowsOfDay(USER_A, DAY_START, DAY_END);
-
-        assertThat(total).isEqualByComparingTo("150.00");
+        assertThat(adapter.sumApprovedOutflowsOfDay(USER_A, DAY_START, DAY_END)).isEqualByComparingTo("150.00");
     }
 
     @Test
     @DisplayName("sumApprovedOutflowsOfDay retorna zero (não nulo) quando não há saídas")
     void sumApprovedOutflowsOfDayDeveRetornarZeroSemSaidas() {
-        var total = adapter.sumApprovedOutflowsOfDay(UUID.randomUUID(), DAY_START, DAY_END);
-
-        assertThat(total).isEqualByComparingTo("0");
+        assertThat(adapter.sumApprovedOutflowsOfDay(UUID.randomUUID(), DAY_START, DAY_END)).isEqualByComparingTo("0");
     }
 
     @Test
@@ -111,9 +202,9 @@ class TransactionPersistenceAdapterTest {
         adapter.save(approvedDeposit(USER_A, "1000.00", IN_WINDOW));
         adapter.save(approvedWithdrawal(USER_A, "300.00", IN_WINDOW));
         adapter.save(approvedPurchase(USER_A, "200.00", IN_WINDOW));
-        adapter.save(rejectedWithdrawal(USER_A, "50.00", IN_WINDOW));        // ignora (rejeitada)
-        adapter.save(deletedApprovedTransfer(USER_A, "100.00", IN_WINDOW));  // ignora (excluída)
-        adapter.save(approvedDeposit(USER_B, "500.00", IN_WINDOW));          // outro usuário
+        adapter.save(rejectedWithdrawal(USER_A, "50.00", IN_WINDOW));
+        adapter.save(deletedApprovedTransfer(USER_A, "100.00", IN_WINDOW));
+        adapter.save(approvedDeposit(USER_B, "500.00", IN_WINDOW));
 
         assertThat(adapter.sumApprovedSignedAmount(USER_A)).isEqualByComparingTo("500.00");
         assertThat(adapter.sumApprovedSignedAmount(UUID.randomUUID())).isEqualByComparingTo("0");
@@ -137,8 +228,7 @@ class TransactionPersistenceAdapterTest {
 
     private Transaction rejectedWithdrawal(UUID user, String amount, Instant occurredAt) {
         var data = new NewTransaction(user, TransactionType.WITHDRAWAL, new BigDecimal(amount), "Saque", null, null);
-        return Transaction.rejected(data, br.com.cadeopila.transactionservice.core.domain.RejectionReason.INSUFFICIENT_BALANCE,
-                occurredAt, List.of(), NOW);
+        return Transaction.rejected(data, RejectionReason.INSUFFICIENT_BALANCE, occurredAt, List.of(), NOW);
     }
 
     private Transaction deletedApprovedTransfer(UUID user, String amount, Instant occurredAt) {

@@ -1,16 +1,22 @@
 package br.com.cadeopila.transactionservice.adapters.out.persistence;
 
 import br.com.cadeopila.transactionservice.adapters.out.persistence.mapper.TransactionPersistenceMapper;
+import br.com.cadeopila.transactionservice.core.domain.PageResult;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
+import br.com.cadeopila.transactionservice.core.domain.TransactionQuery;
 import br.com.cadeopila.transactionservice.core.domain.TransactionStatus;
 import br.com.cadeopila.transactionservice.core.domain.TransactionType;
 import br.com.cadeopila.transactionservice.core.ports.out.TransactionRepositoryPort;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -19,19 +25,39 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
     private static final List<TransactionType> OUTFLOW_TYPES =
             Arrays.stream(TransactionType.values()).filter(TransactionType::isOutflow).toList();
 
+    private static final Sort DEFAULT_SORT =
+            Sort.by(Sort.Order.desc("occurredAt"), Sort.Order.desc("id"));
+
     private final TransactionJpaRepository jpaRepository;
     private final TransactionPersistenceMapper mapper;
+    private final ZoneId zoneId;
 
     public TransactionPersistenceAdapter(TransactionJpaRepository jpaRepository,
-                                         TransactionPersistenceMapper mapper) {
+                                         TransactionPersistenceMapper mapper,
+                                         ZoneId zoneId) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
+        this.zoneId = zoneId;
     }
 
     @Override
     public Transaction save(Transaction transaction) {
         var saved = jpaRepository.saveAndFlush(mapper.toEntity(transaction));
         return mapper.toDomain(saved);
+    }
+
+    @Override
+    public Optional<Transaction> findActiveById(UUID id) {
+        return jpaRepository.findByIdAndDeletedAtIsNull(id).map(mapper::toDomain);
+    }
+
+    @Override
+    public PageResult<Transaction> search(TransactionQuery query) {
+        var pageable = PageRequest.of(query.page().page(), query.page().size(), DEFAULT_SORT);
+        var page = jpaRepository.findAll(TransactionSpecifications.matching(query, zoneId), pageable);
+        var content = page.getContent().stream().map(mapper::toDomain).toList();
+        return new PageResult<>(content, page.getTotalElements(), page.getTotalPages(),
+                query.page().page(), query.page().size());
     }
 
     @Override
