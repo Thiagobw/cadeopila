@@ -4,6 +4,21 @@ Serviço de transações financeiras (depósito, retirada, transferência, compr
 (Java 25 + Spring Boot 4.1.2 + PostgreSQL 17). Cada transação termina `APPROVED` ou `REJECTED` — a rejeitada
 também é gravada, com o motivo.
 
+## Como rodar
+
+O ambiente completo (PostgreSQL + MS1 + MS2 via Docker Compose, `.env`, build e testes) está no
+**[README da raiz](../README.md) → seção "Como rodar"**. Abaixo, só o que é específico do MS2.
+
+- **Swagger / porta:** `http://localhost:8082/swagger-ui.html` · OpenAPI JSON em `/v3/api-docs`.
+- **API Mock (saldo e limites):** `ACCOUNT_API_BASE_URL` aponta para um recurso `accounts` no
+  [mockapi.io](https://mockapi.io) (URL base, **sem** `/accounts`), um registro por usuário:
+  ```json
+  { "userId": "<UUID>", "balance": 1000.00, "dailyLimit": 2000.00, "transactionLimit": 800.00 }
+  ```
+  A URL tem token sensível no subdomínio — nunca é registrada em log, exceção ou resposta.
+- **Rodar só este módulo:** `./mvnw -B -ntp -pl transaction-service -am verify` (137 testes; cobertura em `target/site/jacoco/index.html`).
+- **Roteiro de demonstração:** [`docs/DEMO-E-ROADMAP.md`](docs/DEMO-E-ROADMAP.md).
+
 ## Arquitetura hexagonal (pacotes)
 
 ```
@@ -77,27 +92,7 @@ Swagger UI: `http://localhost:8082/swagger-ui.html` · OpenAPI JSON: `/v3/api-do
 
 Configuração do MockAPI (recurso `accounts`, um por usuário): campos `userId`, `balance`, `dailyLimit`,
 `transactionLimit`. A URL da Mock **nunca** é registrada em log, exceção ou `ProblemDetail`.
-
-## Subir com Docker Compose
-
-```bash
-cp .env.example .env   # preencha ACCOUNT_API_BASE_URL e as senhas
-docker compose up --build
-```
-
-Sobe PostgreSQL 17 + MS1 + MS2. O schema do MS2 é criado/versionado pelo **Flyway** (`V1`/`V2`); o Hibernate roda
-com `ddl-auto=validate`.
-
-## Build e testes
-
-```bash
-./mvnw -B -ntp -pl transaction-service -am verify
-```
-
-137 testes: unitários (domínio/casos de uso), de fatia (`@WebMvcTest`, `@DataJpaTest` com H2 em modo PostgreSQL),
-de integração (`@SpringBootTest` com as portas externas mockadas) e de arquitetura (ArchUnit). As migrations Flyway
-rodam apenas contra o PostgreSQL real; os testes usam H2 com `ddl-auto=create-drop`.
-Relatório de cobertura (JaCoCo) em `target/site/jacoco/index.html` — cobertura atual: **instrução 98,3% / linha 98,6% / classes 100%**.
+(Como subir e configurar: ver a seção **Como rodar**, no topo.)
 
 ## Limitações conhecidas (sem correção nesta entrega)
 
