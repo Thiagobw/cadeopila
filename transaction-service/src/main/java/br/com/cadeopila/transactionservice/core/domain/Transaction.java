@@ -14,6 +14,10 @@ import java.util.UUID;
  * persistência por {@link #rehydrate}. A correção é feita por edição de metadados
  * ({@link #updateMetadata}) e a "remoção" é exclusão lógica ({@link #markAsDeleted}),
  * nunca apagando o histórico — conforme pedido do PO.
+ *
+ * <p>Além da categoria "clássica", carrega a classificação inteligente usada na análise de despesas:
+ * {@link CategoryLevel1 nível 1} (grau de necessidade), subcategoria livre (nível 2) e as flags
+ * {@code fixed}/{@code recurring}.</p>
  */
 public final class Transaction {
 
@@ -24,6 +28,10 @@ public final class Transaction {
     private final BigDecimal amount;
     private final String description;
     private final TransactionCategory category;
+    private final CategoryLevel1 categoryLevel1;
+    private final String categoryLevel2;
+    private final boolean fixed;
+    private final boolean recurring;
     private final TransactionStatus status;
     private final RejectionReason rejectionReason;
     private final Instant occurredAt;
@@ -35,6 +43,7 @@ public final class Transaction {
 
     private Transaction(UUID id, UUID userId, UUID destinationUserId, TransactionType type,
                         BigDecimal amount, String description, TransactionCategory category,
+                        CategoryLevel1 categoryLevel1, String categoryLevel2, boolean fixed, boolean recurring,
                         TransactionStatus status, RejectionReason rejectionReason, Instant occurredAt,
                         List<ExchangeQuote> exchangeQuotes, Instant createdAt, Instant updatedAt,
                         Instant deletedAt, long version) {
@@ -45,6 +54,10 @@ public final class Transaction {
         this.amount = amount;
         this.description = description;
         this.category = category;
+        this.categoryLevel1 = categoryLevel1;
+        this.categoryLevel2 = categoryLevel2;
+        this.fixed = fixed;
+        this.recurring = recurring;
         this.status = status;
         this.rejectionReason = rejectionReason;
         this.occurredAt = occurredAt;
@@ -59,6 +72,7 @@ public final class Transaction {
                                        List<ExchangeQuote> quotes, Instant now) {
         return new Transaction(null, data.userId(), data.destinationUserId(), data.type(),
                 data.amount(), data.description(), data.category(),
+                data.categoryLevel1(), data.categoryLevel2(), data.fixed(), data.recurring(),
                 TransactionStatus.APPROVED, null, occurredAt,
                 quotes, now, now, null, 0L);
     }
@@ -70,6 +84,7 @@ public final class Transaction {
         }
         return new Transaction(null, data.userId(), data.destinationUserId(), data.type(),
                 data.amount(), data.description(), data.category(),
+                data.categoryLevel1(), data.categoryLevel2(), data.fixed(), data.recurring(),
                 TransactionStatus.REJECTED, reason, occurredAt,
                 quotes, now, now, null, 0L);
     }
@@ -77,16 +92,34 @@ public final class Transaction {
     /** Reconstrói o agregado a partir da persistência; não revalida as regras de criação. */
     public static Transaction rehydrate(UUID id, UUID userId, UUID destinationUserId, TransactionType type,
                                         BigDecimal amount, String description, TransactionCategory category,
+                                        CategoryLevel1 categoryLevel1, String categoryLevel2,
+                                        boolean fixed, boolean recurring,
                                         TransactionStatus status, RejectionReason rejectionReason,
                                         Instant occurredAt, List<ExchangeQuote> exchangeQuotes,
                                         Instant createdAt, Instant updatedAt, Instant deletedAt, long version) {
         return new Transaction(id, userId, destinationUserId, type, amount, description, category,
+                categoryLevel1, categoryLevel2, fixed, recurring,
+                status, rejectionReason, occurredAt, exchangeQuotes, createdAt, updatedAt, deletedAt, version);
+    }
+
+    /**
+     * Compatibilidade: reconstrói sem a classificação inteligente (nível 1 derivado da categoria,
+     * nível 2 vazio e flags {@code false}). Usado por reidratações que ainda não conhecem a hierarquia.
+     */
+    public static Transaction rehydrate(UUID id, UUID userId, UUID destinationUserId, TransactionType type,
+                                        BigDecimal amount, String description, TransactionCategory category,
+                                        TransactionStatus status, RejectionReason rejectionReason,
+                                        Instant occurredAt, List<ExchangeQuote> exchangeQuotes,
+                                        Instant createdAt, Instant updatedAt, Instant deletedAt, long version) {
+        return rehydrate(id, userId, destinationUserId, type, amount, description, category,
+                CategoryLevel1.defaultFor(category), null, false, false,
                 status, rejectionReason, occurredAt, exchangeQuotes, createdAt, updatedAt, deletedAt, version);
     }
 
     /**
      * Edita apenas os metadados (descrição e categoria). Campos nulos são mantidos. Valor, tipo, dono,
-     * destino, status, motivo e datas de ocorrência/criação são imutáveis. Retorna uma nova instância.
+     * destino, status, motivo, classificação inteligente e datas de ocorrência/criação são imutáveis.
+     * Retorna uma nova instância.
      */
     public Transaction updateMetadata(String newDescription, TransactionCategory newCategory, Instant now) {
         var updatedDescription = this.description;
@@ -101,6 +134,7 @@ public final class Transaction {
             throw new InvalidTransactionException("category é obrigatória em transação de compra");
         }
         return new Transaction(id, userId, destinationUserId, type, amount, updatedDescription, updatedCategory,
+                categoryLevel1, categoryLevel2, fixed, recurring,
                 status, rejectionReason, occurredAt, exchangeQuotes, createdAt, now, deletedAt, version);
     }
 
@@ -113,6 +147,7 @@ public final class Transaction {
             throw new TransactionNotDeletableException();
         }
         return new Transaction(id, userId, destinationUserId, type, amount, description, category,
+                categoryLevel1, categoryLevel2, fixed, recurring,
                 status, rejectionReason, occurredAt, exchangeQuotes, createdAt, now, now, version);
     }
 
@@ -131,6 +166,10 @@ public final class Transaction {
     public BigDecimal getAmount() { return amount; }
     public String getDescription() { return description; }
     public TransactionCategory getCategory() { return category; }
+    public CategoryLevel1 getCategoryLevel1() { return categoryLevel1; }
+    public String getCategoryLevel2() { return categoryLevel2; }
+    public boolean isFixed() { return fixed; }
+    public boolean isRecurring() { return recurring; }
     public TransactionStatus getStatus() { return status; }
     public RejectionReason getRejectionReason() { return rejectionReason; }
     public Instant getOccurredAt() { return occurredAt; }

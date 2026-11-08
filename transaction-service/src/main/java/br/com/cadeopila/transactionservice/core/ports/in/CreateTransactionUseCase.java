@@ -1,5 +1,6 @@
 package br.com.cadeopila.transactionservice.core.ports.in;
 
+import br.com.cadeopila.transactionservice.core.domain.CategoryLevel1;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import br.com.cadeopila.transactionservice.core.domain.TransactionCategory;
 import br.com.cadeopila.transactionservice.core.domain.TransactionType;
@@ -17,8 +18,18 @@ public interface CreateTransactionUseCase {
             BigDecimal amount,
             String description,
             TransactionCategory category,
-            UUID destinationUserId
-    ) {}
+            UUID destinationUserId,
+            CategoryLevel1 categoryLevel1,
+            String categoryLevel2,
+            boolean fixed,
+            boolean recurring
+    ) {
+        /** Compatibilidade com a criação clássica (sem a hierarquia inteligente). */
+        public Command(UUID userId, TransactionType type, BigDecimal amount, String description,
+                       TransactionCategory category, UUID destinationUserId) {
+            this(userId, type, amount, description, category, destinationUserId, null, null, false, false);
+        }
+    }
 
     /**
      * Transação persistida mais o saldo a exibir na resposta do POST ({@code account.balanceAfter}):

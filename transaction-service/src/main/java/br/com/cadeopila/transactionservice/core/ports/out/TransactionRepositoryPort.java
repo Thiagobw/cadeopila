@@ -1,11 +1,13 @@
 package br.com.cadeopila.transactionservice.core.ports.out;
 
+import br.com.cadeopila.transactionservice.core.domain.AnalyticsRow;
 import br.com.cadeopila.transactionservice.core.domain.PageResult;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import br.com.cadeopila.transactionservice.core.domain.TransactionQuery;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,4 +32,11 @@ public interface TransactionRepositoryPort {
      * está em [início, fim), para checar o limite diário. Nunca retorna {@code null}.
      */
     BigDecimal sumApprovedOutflowsOfDay(UUID userId, Instant dayStartInclusive, Instant dayEndExclusive);
+
+    /**
+     * Linhas cruas das transações APROVADAS e ativas (não excluídas) do usuário cujo {@code occurredAt}
+     * está em [início, fim) — depósitos e saídas. O agrupamento por dia/mês acontece em memória no caso
+     * de uso (no fuso da aplicação), nunca via {@code GROUP BY} de data no banco. Nunca retorna {@code null}.
+     */
+    List<AnalyticsRow> findApprovedByPeriod(UUID userId, Instant startInclusive, Instant endExclusive);
 }

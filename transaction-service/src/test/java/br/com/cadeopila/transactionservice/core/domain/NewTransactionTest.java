@@ -116,4 +116,62 @@ class NewTransactionTest {
 
         assertThat(data.description()).isEqualTo("Salário");
     }
+
+    // ---------- Pedido 5: classificação inteligente ----------
+
+    @Test
+    @DisplayName("Regra de fricção: subcategoria OUTROS exige descrição com no mínimo 5 caracteres")
+    void deveExigirDescricaoMinimaQuandoOutros() {
+        assertThatThrownBy(() -> new NewTransaction(OWNER, TransactionType.PURCHASE, TEN, "Café",
+                TransactionCategory.OTHER, null, null, "OUTROS", false, false))
+                .isInstanceOf(InvalidTransactionException.class)
+                .hasMessageContaining("OUTROS");
+    }
+
+    @Test
+    @DisplayName("Regra de fricção é case-insensitive para OUTROS")
+    void deveAplicarFriccaoCaseInsensitive() {
+        assertThatThrownBy(() -> new NewTransaction(OWNER, TransactionType.PURCHASE, TEN, "abc",
+                TransactionCategory.OTHER, null, null, "outros", false, false))
+                .isInstanceOf(InvalidTransactionException.class)
+                .hasMessageContaining("5 caracteres");
+    }
+
+    @Test
+    @DisplayName("OUTROS com descrição suficiente (>= 5) é aceito")
+    void deveAceitarOutrosComDescricaoSuficiente() {
+        assertThatCode(() -> new NewTransaction(OWNER, TransactionType.PURCHASE, TEN, "Padaria da esquina",
+                TransactionCategory.OTHER, null, null, "OUTROS", false, false))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Nível 1 ausente é derivado da categoria (FOOD → ESSENCIAL)")
+    void deveDerivarNivel1DaCategoria() {
+        var data = new NewTransaction(OWNER, TransactionType.PURCHASE, TEN, "Mercado",
+                TransactionCategory.FOOD, null);
+
+        assertThat(data.categoryLevel1()).isEqualTo(CategoryLevel1.ESSENCIAL);
+    }
+
+    @Test
+    @DisplayName("Nível 1 informado é preservado")
+    void devePreservarNivel1Informado() {
+        var data = new NewTransaction(OWNER, TransactionType.PURCHASE, TEN, "Cinema",
+                TransactionCategory.LEISURE, null, CategoryLevel1.ESTILO_DE_VIDA, "Streaming", true, true);
+
+        assertThat(data.categoryLevel1()).isEqualTo(CategoryLevel1.ESTILO_DE_VIDA);
+        assertThat(data.categoryLevel2()).isEqualTo("Streaming");
+        assertThat(data.fixed()).isTrue();
+        assertThat(data.recurring()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Subcategoria em branco é normalizada para nulo")
+    void deveNormalizarSubcategoriaEmBranco() {
+        var data = new NewTransaction(OWNER, TransactionType.DEPOSIT, TEN, "Salário",
+                null, null, null, "   ", false, false);
+
+        assertThat(data.categoryLevel2()).isNull();
+    }
 }
