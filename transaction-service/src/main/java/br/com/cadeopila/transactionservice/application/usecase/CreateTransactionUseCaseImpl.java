@@ -62,7 +62,8 @@ public class CreateTransactionUseCaseImpl implements CreateTransactionUseCase {
     public Result create(Command command) {
         // 1) Invariantes de domínio antes de qualquer chamada externa.
         var data = new NewTransaction(command.userId(), command.type(), command.amount(),
-                command.description(), command.category(), command.destinationUserId());
+                command.description(), command.category(), command.destinationUserId(),
+                command.categoryLevel1(), command.categoryLevel2(), command.fixed(), command.recurring());
 
         var now = clock.instant();
 
