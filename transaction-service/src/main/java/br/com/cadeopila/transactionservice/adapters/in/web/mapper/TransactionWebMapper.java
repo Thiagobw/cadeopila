@@ -26,7 +26,11 @@ public class TransactionWebMapper {
                 request.amount(),
                 request.description(),
                 request.category(),
-                request.destinationUserId());
+                request.destinationUserId(),
+                request.categoryLevel1(),
+                request.categoryLevel2(),
+                Boolean.TRUE.equals(request.isFixed()),
+                Boolean.TRUE.equals(request.isRecurring()));
     }
 
     public CreateTransactionResponse toCreateResponse(CreateTransactionUseCase.Result result) {

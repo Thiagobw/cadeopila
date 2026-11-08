@@ -1,6 +1,8 @@
 package br.com.cadeopila.transactionservice.adapters.out.persistence;
 
 import br.com.cadeopila.transactionservice.adapters.out.persistence.mapper.TransactionPersistenceMapper;
+import br.com.cadeopila.transactionservice.core.domain.AnalyticsRow;
+import br.com.cadeopila.transactionservice.core.domain.CategoryLevel1;
 import br.com.cadeopila.transactionservice.core.domain.ExchangeQuote;
 import br.com.cadeopila.transactionservice.core.domain.NewTransaction;
 import br.com.cadeopila.transactionservice.core.domain.PageQuery;
@@ -209,6 +211,51 @@ class TransactionPersistenceAdapterTest {
 
         assertThat(adapter.sumApprovedSignedAmount(USER_A)).isEqualByComparingTo("500.00");
         assertThat(adapter.sumApprovedSignedAmount(UUID.randomUUID())).isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("findApprovedByPeriod traz depósitos e saídas APROVADAS e ativas do usuário no período")
+    void findApprovedByPeriodDeveTrazerSoAprovadasAtivasDoUsuarioNoPeriodo() {
+        adapter.save(approvedDeposit(USER_A, "500.00", IN_WINDOW));
+        adapter.save(approvedWithdrawal(USER_A, "100.00", IN_WINDOW));
+        adapter.save(rejectedWithdrawal(USER_A, "30.00", IN_WINDOW));        // rejeitada → fora
+        adapter.save(deletedApprovedTransfer(USER_A, "20.00", IN_WINDOW));   // excluída → fora
+        adapter.save(approvedDeposit(USER_A, "999.00", BEFORE_WINDOW));      // fora do período
+        adapter.save(approvedWithdrawal(USER_B, "70.00", IN_WINDOW));        // outro usuário
+
+        var rows = adapter.findApprovedByPeriod(USER_A, DAY_START, DAY_END);
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows).extracting(AnalyticsRow::type)
+                .containsExactlyInAnyOrder(TransactionType.DEPOSIT, TransactionType.WITHDRAWAL);
+    }
+
+    @Test
+    @DisplayName("findApprovedByPeriod devolve a classificação inteligente (nível 1, nível 2, fixa) de cada linha")
+    void findApprovedByPeriodDeveDevolverClassificacao() {
+        adapter.save(approvedRichPurchase(USER_A, "250.00", CategoryLevel1.ESTILO_DE_VIDA, "Delivery", true, IN_WINDOW));
+
+        var rows = adapter.findApprovedByPeriod(USER_A, DAY_START, DAY_END);
+
+        assertThat(rows).hasSize(1);
+        var row = rows.getFirst();
+        assertThat(row.categoryLevel1()).isEqualTo(CategoryLevel1.ESTILO_DE_VIDA);
+        assertThat(row.categoryLevel2()).isEqualTo("Delivery");
+        assertThat(row.fixed()).isTrue();
+        assertThat(row.amount()).isEqualByComparingTo("250.00");
+    }
+
+    @Test
+    @DisplayName("findApprovedByPeriod retorna lista vazia (não nula) quando não há transações")
+    void findApprovedByPeriodDeveRetornarVazio() {
+        assertThat(adapter.findApprovedByPeriod(UUID.randomUUID(), DAY_START, DAY_END)).isEmpty();
+    }
+
+    private Transaction approvedRichPurchase(UUID user, String amount, CategoryLevel1 level1,
+                                             String level2, boolean fixed, Instant occurredAt) {
+        var data = new NewTransaction(user, TransactionType.PURCHASE, new BigDecimal(amount), "Compra teste",
+                TransactionCategory.SHOPPING, null, level1, level2, fixed, false);
+        return Transaction.approved(data, occurredAt, List.of(), NOW);
     }
 
     private Transaction approvedWithdrawal(UUID user, String amount, Instant occurredAt) {

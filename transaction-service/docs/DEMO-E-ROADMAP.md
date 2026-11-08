@@ -1,7 +1,7 @@
 # MS2 (transaction-service) — Roteiro de demo e handoff
 
-Estado em 2026-11-08. Pedidos **1, 2 e 3** entregues e verdes (`mvnw -pl transaction-service verify` →
-137 testes, 0 falhas; cobertura instrução 98,3% / linha 98,6% / classes 100%).
+Estado em 2026-11-08. Pedidos **1, 2, 3 e 5** entregues e verdes (`mvnw -pl transaction-service verify` →
+163 testes, 0 falhas; ArchUnit verde).
 
 > **Como subir, buildar e configurar a API Mock:** ver a seção **"Como rodar"** do
 > [`../README.md`](../README.md) (convenção: instruções de execução ficam no README). Este documento é só o
@@ -46,6 +46,11 @@ Mapeado ao roteiro do PO, recortado para o MS2. Use o `<UUID>` cadastrado no Moc
   (type/status/período); PATCH metadados; DELETE lógico (só REJECTED → 422 se APPROVED). Domínio puro (ArchUnit verde).
 - **Pedido 2 (DBTB-9):** saldo derivado (Mock = saldo inicial + histórico aprovado do MS2); rota de saldo; Mock fora do ar → 503/REJECTED; timeouts 2s/3s.
 - **Pedido 3 (DBTB-10):** câmbio USD/EUR snapshot na criação, exibido no GET; fallback tolerante a falha; taxa = fechamento PTAX D-1 (America/Sao_Paulo).
+- **Pedido 5 (análise de despesas):** `GET /api/v1/analytics/expenses/summary?month=MM-YYYY` (padrão = mês atual).
+  Hierarquia de categorias (nível 1 = grau de necessidade: ESSENCIAL/ESTILO_DE_VIDA/SAUDE_FINANCEIRA/DIVIDAS_IMPREVISTOS;
+  nível 2 livre) + flags `isFixed`/`isRecurring` na criação; regra de fricção do "OUTROS" (descrição ≥ 5) validada no
+  domínio → 400. Payload com 4 blocos (visão geral, raio-X por nível 1 c/ % da receita, onde cortar top 5, custo fixo),
+  total por dia e alerta do "buraco negro" (OUTROS > 5%). **Agregação em Java no fuso `America/Sao_Paulo`** (sem `GROUP BY` de data).
 - **Pedido 8 (qualidade):** Bean Validation + ProblemDetail; Swagger; README técnico; JaCoCo; sem segredos no repo.
 
 Arquitetura: `core` (JDK) → `application` (casos de uso) → `adapters/{in.web, out.account, out.exchange, out.persistence, config}`.
@@ -58,22 +63,17 @@ Build: Spring Boot 4.1.2, Java 25, Flyway V1+V2, springdoc 3.2.0, JaCoCo 0.8.15,
 > Estas partes carregam complexidade e serão feitas em sessões separadas. Ordem combinada:
 > **(A) Análise de despesas → (B) Relatório CSV → (C) Segurança (auth) por último.**
 
-### (A) Pedido 5 — Análise de despesas (MS2) — PRÓXIMA
-**Critério de aceite (PDF do PO):**
-- Só **saídas aprovadas** contam como despesa: `WITHDRAWAL`, `TRANSFER` (enviadas), `PURCHASE`. Depósitos e rejeitadas **não** entram.
-- Resumo **por categoria** num período: total de cada categoria + total geral.
-- Total **por dia** e total **por mês** no período.
-- Período **padrão quando omitido = mês atual**.
-- Aceite: 5 compras em 3 categorias → 3 linhas e total bate; rejeitadas/depósitos fora; sem período → mês atual.
+### (A) Pedido 5 — Análise de despesas (MS2) — ✅ CONCLUÍDO
+Entregue com arquitetura de dados por **grau de necessidade** (além do resumo básico do PO). Briefing de contexto
+em **[`PEDIDO-5-ANALISE-DESPESAS.md`](PEDIDO-5-ANALISE-DESPESAS.md)**.
 
-**Design proposto (encaixe no hexagonal):**
-- `core/ports/in/GetExpenseAnalysisUseCase` com `record Query(UUID userId, LocalDate from, LocalDate to)` (resolve mês atual se nulos, no fuso `app.time-zone`) e `record Analysis(List<CategoryTotal> byCategory, BigDecimal grandTotal, List<DailyTotal> byDay, List<MonthlyTotal> byMonth)`.
-- `application/usecase/GetExpenseAnalysisUseCaseImpl` (`@Transactional(readOnly=true)`), usando o `Clock`/`ZoneId` já existentes para o default de período.
-- `core/ports/out/TransactionRepositoryPort`: adicionar consultas de agregação (por categoria / por dia / por mês) — **só** status APPROVED, tipos de saída, não excluídas, `occurredAt` no período convertido a `Instant` no fuso. Preferir **projeções/`GROUP BY`** no `TransactionJpaRepository` (evita carregar entidades) — atenção ao `GROUP BY` por dia/mês com `TIMESTAMPTZ` no fuso certo (truncar no fuso da aplicação, não em UTC).
-- `adapters/in/web/ExpenseController` (ou acrescentar em `Account/TransactionController`): `GET /api/v1/transactions/analysis?userId=&from=&to=` + DTOs (`@Schema`). Mapper dedicado.
-- **Pontos de atenção (a complexidade):** agrupamento por dia/mês precisa respeitar `America/Sao_Paulo` (uma transação às 23h UTC pode cair em outro dia local); reusar a constante de tipos de saída (`TransactionType.isOutflow`); decidir se dia/mês vêm vazios ou com zero; paginação não é exigida aqui.
-- **Testes:** use case (mês atual default; só saídas aprovadas; totais batendo), repositório (`@DataJpaTest` agregações no fuso), controller (`@WebMvcTest`), integração (`@SpringBootTest`), e os 3 cenários de aceite do PO.
-- **Jira:** criar card/história no épico de Análise (Pedido 5) antes de commitar (o board hoje não tem card de Pedido 5).
+Rota **`GET /api/v1/analytics/expenses/summary?userId=&month=MM-YYYY`** (sem `month` → mês atual). Só **APROVADAS**:
+depósitos = receita; saque/transferência/compra = despesa. Payload: **visão geral** (receitas/despesas/saldo livre),
+**raio-X** por nível 1 com % da receita, **onde cortar hoje** (top 5 subcategorias discricionárias — nível 1
+ESTILO_DE_VIDA ou DIVIDAS_IMPREVISTOS), **custo fixo** (`isFixed`), total **por dia** e `showBlackHoleWarning`
+(gasto em "OUTROS" > 5% das despesas). Criação ganhou `categoryLevel1`/`categoryLevel2`/`isFixed`/`isRecurring`
+(opcionais; nível 1 derivado da categoria quando ausente) e a **regra de fricção do "OUTROS"** (descrição ≥ 5,
+validada no domínio → 400). Agregação **em Java no fuso `America/Sao_Paulo`**; migration **V3** adiciona as colunas.
 
 ### (B) Pedido 7 — Relatório de transações em CSV (MS2) — DEPOIS de (A)
 **Critério de aceite:** rota que devolve CSV para download das transações do usuário num período; colunas mínimas

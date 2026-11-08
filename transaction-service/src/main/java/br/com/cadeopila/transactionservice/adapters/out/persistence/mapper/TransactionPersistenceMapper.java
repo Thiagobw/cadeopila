@@ -2,6 +2,7 @@ package br.com.cadeopila.transactionservice.adapters.out.persistence.mapper;
 
 import br.com.cadeopila.transactionservice.adapters.out.persistence.ExchangeQuoteEmbeddable;
 import br.com.cadeopila.transactionservice.adapters.out.persistence.TransactionJpaEntity;
+import br.com.cadeopila.transactionservice.core.domain.CategoryLevel1;
 import br.com.cadeopila.transactionservice.core.domain.ExchangeQuote;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import org.springframework.stereotype.Component;
@@ -23,6 +24,10 @@ public class TransactionPersistenceMapper {
         entity.setAmount(transaction.getAmount());
         entity.setDescription(transaction.getDescription());
         entity.setCategory(transaction.getCategory());
+        entity.setCategoryLevel1(transaction.getCategoryLevel1());
+        entity.setCategoryLevel2(transaction.getCategoryLevel2());
+        entity.setFixed(transaction.isFixed());
+        entity.setRecurring(transaction.isRecurring());
         entity.setStatus(transaction.getStatus());
         entity.setRejectionReason(transaction.getRejectionReason());
         entity.setOccurredAt(transaction.getOccurredAt());
@@ -35,6 +40,9 @@ public class TransactionPersistenceMapper {
     }
 
     public Transaction toDomain(TransactionJpaEntity entity) {
+        var level1 = entity.getCategoryLevel1() != null
+                ? entity.getCategoryLevel1()
+                : CategoryLevel1.defaultFor(entity.getCategory());
         return Transaction.rehydrate(
                 entity.getId(),
                 entity.getUserId(),
@@ -43,6 +51,10 @@ public class TransactionPersistenceMapper {
                 entity.getAmount(),
                 entity.getDescription(),
                 entity.getCategory(),
+                level1,
+                entity.getCategoryLevel2(),
+                entity.isFixed(),
+                entity.isRecurring(),
                 entity.getStatus(),
                 entity.getRejectionReason(),
                 entity.getOccurredAt(),

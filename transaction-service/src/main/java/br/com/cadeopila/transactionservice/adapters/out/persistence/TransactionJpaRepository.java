@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,4 +46,17 @@ public interface TransactionJpaRepository
                            @Param("types") Collection<TransactionType> types,
                            @Param("start") Instant start,
                            @Param("end") Instant end);
+
+    @Query("""
+            SELECT t FROM TransactionJpaEntity t
+            WHERE t.userId = :userId
+              AND t.status = :status
+              AND t.occurredAt >= :start
+              AND t.occurredAt < :end
+              AND t.deletedAt IS NULL
+            """)
+    List<TransactionJpaEntity> findApprovedByPeriod(@Param("userId") UUID userId,
+                                                    @Param("status") TransactionStatus status,
+                                                    @Param("start") Instant start,
+                                                    @Param("end") Instant end);
 }

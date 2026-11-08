@@ -1,7 +1,9 @@
 package br.com.cadeopila.transactionservice.adapters.in.web.dto;
 
+import br.com.cadeopila.transactionservice.core.domain.CategoryLevel1;
 import br.com.cadeopila.transactionservice.core.domain.TransactionCategory;
 import br.com.cadeopila.transactionservice.core.domain.TransactionType;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -39,5 +41,24 @@ public record CreateTransactionRequest(
 
         @Schema(description = "Usuário de destino (obrigatório e exclusivo de TRANSFER)",
                 example = "9f1c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8")
-        UUID destinationUserId
+        UUID destinationUserId,
+
+        @Schema(description = "Grau de necessidade (nível 1). Opcional: se ausente, é derivado da categoria. "
+                + "Valores: ESSENCIAL, ESTILO_DE_VIDA, SAUDE_FINANCEIRA, DIVIDAS_IMPREVISTOS",
+                example = "ESTILO_DE_VIDA")
+        CategoryLevel1 categoryLevel1,
+
+        @Schema(description = "Subcategoria livre (nível 2), ex.: Delivery, Aluguel. Usar \"OUTROS\" como "
+                + "catch-all exige description com no mínimo 5 caracteres (regra de fricção).",
+                example = "Delivery")
+        @Size(max = 100, message = "categoryLevel2 deve ter no máximo 100 caracteres")
+        String categoryLevel2,
+
+        @Schema(description = "Despesa fixa — entra no Custo Fixo Operacional (padrão false)", example = "false")
+        @JsonProperty("isFixed")
+        Boolean isFixed,
+
+        @Schema(description = "Despesa recorrente (padrão false)", example = "false")
+        @JsonProperty("isRecurring")
+        Boolean isRecurring
 ) {}

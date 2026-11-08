@@ -76,6 +76,7 @@ real** usando a MockAPI como ponto de partida:
 | PATCH | `/api/v1/transactions/{id}` | Edita metadados (`description`, `category`); valor/tipo/status imutáveis |
 | DELETE | `/api/v1/transactions/{id}` | Exclusão **lógica** (apenas REJECTED; preserva o histórico) — 422 se APPROVED |
 | GET | `/api/v1/accounts/balance?userId=...` | Saldo atual derivado + limites + consumo do dia |
+| GET | `/api/v1/analytics/expenses/summary?userId=...&month=MM-YYYY` | Análise de despesas do mês (padrão = mês atual): visão geral, raio-X por grau de necessidade, onde cortar (top 5), custo fixo, total por dia e alerta do "buraco negro" |
 
 > "Corrigir sem apagar" (critério do PO): a correção é feita por **nova transação** ou por edição de metadados;
 > a "remoção" é **soft delete** (`deleted_at`), restrita a transações rejeitadas, preservando o histórico.

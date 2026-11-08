@@ -1,5 +1,6 @@
 package br.com.cadeopila.transactionservice.adapters.out.persistence;
 
+import br.com.cadeopila.transactionservice.core.domain.CategoryLevel1;
 import br.com.cadeopila.transactionservice.core.domain.RejectionReason;
 import br.com.cadeopila.transactionservice.core.domain.TransactionCategory;
 import br.com.cadeopila.transactionservice.core.domain.TransactionStatus;
@@ -54,6 +55,19 @@ public class TransactionJpaEntity {
     private TransactionCategory category;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "category_level_1", length = 20)
+    private CategoryLevel1 categoryLevel1;
+
+    @Column(name = "category_level_2", length = 100)
+    private String categoryLevel2;
+
+    @Column(name = "is_fixed", nullable = false)
+    private boolean fixed;
+
+    @Column(name = "is_recurring", nullable = false)
+    private boolean recurring;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 10)
     private TransactionStatus status;
 
@@ -105,6 +119,18 @@ public class TransactionJpaEntity {
 
     public TransactionCategory getCategory() { return category; }
     public void setCategory(TransactionCategory category) { this.category = category; }
+
+    public CategoryLevel1 getCategoryLevel1() { return categoryLevel1; }
+    public void setCategoryLevel1(CategoryLevel1 categoryLevel1) { this.categoryLevel1 = categoryLevel1; }
+
+    public String getCategoryLevel2() { return categoryLevel2; }
+    public void setCategoryLevel2(String categoryLevel2) { this.categoryLevel2 = categoryLevel2; }
+
+    public boolean isFixed() { return fixed; }
+    public void setFixed(boolean fixed) { this.fixed = fixed; }
+
+    public boolean isRecurring() { return recurring; }
+    public void setRecurring(boolean recurring) { this.recurring = recurring; }
 
     public TransactionStatus getStatus() { return status; }
     public void setStatus(TransactionStatus status) { this.status = status; }

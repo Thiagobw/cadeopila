@@ -1,6 +1,8 @@
 package br.com.cadeopila.transactionservice.adapters.out.persistence;
 
 import br.com.cadeopila.transactionservice.adapters.out.persistence.mapper.TransactionPersistenceMapper;
+import br.com.cadeopila.transactionservice.core.domain.AnalyticsRow;
+import br.com.cadeopila.transactionservice.core.domain.CategoryLevel1;
 import br.com.cadeopila.transactionservice.core.domain.PageResult;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import br.com.cadeopila.transactionservice.core.domain.TransactionQuery;
@@ -71,5 +73,22 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
         var sum = jpaRepository.sumOutflows(
                 userId, TransactionStatus.APPROVED, OUTFLOW_TYPES, dayStartInclusive, dayEndExclusive);
         return sum != null ? sum : BigDecimal.ZERO;
+    }
+
+    @Override
+    public List<AnalyticsRow> findApprovedByPeriod(UUID userId, Instant startInclusive, Instant endExclusive) {
+        return jpaRepository
+                .findApprovedByPeriod(userId, TransactionStatus.APPROVED, startInclusive, endExclusive)
+                .stream()
+                .map(TransactionPersistenceAdapter::toAnalyticsRow)
+                .toList();
+    }
+
+    private static AnalyticsRow toAnalyticsRow(TransactionJpaEntity e) {
+        var level1 = e.getCategoryLevel1() != null
+                ? e.getCategoryLevel1()
+                : CategoryLevel1.defaultFor(e.getCategory());
+        return new AnalyticsRow(e.getType(), e.getAmount(), level1, e.getCategoryLevel2(),
+                e.isFixed(), e.getOccurredAt());
     }
 }
