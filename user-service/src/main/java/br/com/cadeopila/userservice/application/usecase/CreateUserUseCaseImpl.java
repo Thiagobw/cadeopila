@@ -1,5 +1,6 @@
 package br.com.cadeopila.userservice.application.usecase;
 
+import br.com.cadeopila.userservice.core.domain.CpfMasker;
 import br.com.cadeopila.userservice.core.domain.Email;
 import br.com.cadeopila.userservice.core.domain.User;
 import br.com.cadeopila.userservice.core.exception.UserAlreadyExistsException;
@@ -32,7 +33,9 @@ public class CreateUserUseCaseImpl implements CreateUserUseCase {
             throw new UserAlreadyExistsException("email", normalizedEmail);
         }
         if (userRepository.existsByCpf(command.cpf())) {
-            throw new UserAlreadyExistsException("cpf", command.cpf());
+            // Mascara o CPF já na origem: o valor cru nunca entra na exceção, nos logs
+            // nem no corpo (detail/value) do erro 409 devolvido pela API.
+            throw new UserAlreadyExistsException("cpf", CpfMasker.mask(command.cpf()));
         }
 
         var now = LocalDateTime.now();

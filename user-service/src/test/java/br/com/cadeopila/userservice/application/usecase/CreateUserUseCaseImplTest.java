@@ -90,7 +90,7 @@ class CreateUserUseCaseImplTest {
     }
 
     @Test
-    @DisplayName("Deve lançar conflito e não salvar quando o CPF já existe")
+    @DisplayName("Deve lançar conflito com o CPF mascarado (sem expor o CPF cru) quando o CPF já existe")
     void deveLancarConflitoQuandoCpfJaExiste() {
         // Given
         var command = new CreateUserUseCase.Command(
@@ -100,7 +100,9 @@ class CreateUserUseCaseImplTest {
 
         // When / Then
         assertThatThrownBy(() -> useCase.create(command))
-                .isInstanceOf(UserAlreadyExistsException.class);
+                .isInstanceOf(UserAlreadyExistsException.class)
+                .hasMessageContaining("***.***.***-01")
+                .hasMessageNotContaining("12345678901");
         verify(userRepository, never()).save(any());
     }
 }

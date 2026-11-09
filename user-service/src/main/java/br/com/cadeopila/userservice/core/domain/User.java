@@ -33,7 +33,6 @@ public final class User {
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 
     public String maskedCpf() {
-        if (cpf == null || cpf.length() < 11) return "***.***.***-**";
-        return "***.***.***-" + cpf.substring(9);
+        return CpfMasker.mask(cpf);
     }
 }

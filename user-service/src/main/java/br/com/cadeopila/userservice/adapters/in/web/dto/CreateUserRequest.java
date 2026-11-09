@@ -21,7 +21,7 @@ public record CreateUserRequest(
         String cpf,
 
         @NotBlank(message = "Senha é obrigatória")
-        @Size(min = 8, message = "Senha deve ter no mínimo 8 caracteres")
+        @Size(min = 8, max = 72, message = "A senha deve ter entre 8 e 72 caracteres")
         String password
 ) {
     public CreateUserRequest {

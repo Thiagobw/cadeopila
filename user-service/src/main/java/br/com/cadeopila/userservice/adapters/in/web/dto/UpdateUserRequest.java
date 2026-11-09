@@ -15,7 +15,7 @@ public record UpdateUserRequest(
         @Size(max = 150, message = "Email deve ter no máximo 150 caracteres")
         String email,
 
-        @Size(min = 8, message = "Senha deve ter no mínimo 8 caracteres")
+        @Size(min = 8, max = 72, message = "A senha deve ter entre 8 e 72 caracteres")
         String password
 ) {
     public UpdateUserRequest {
