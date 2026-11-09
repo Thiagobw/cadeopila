@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +30,10 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
 
     private static final Sort DEFAULT_SORT =
             Sort.by(Sort.Order.desc("occurredAt"), Sort.Order.desc("id"));
+
+    /** Relatório lê em ordem cronológica (ascendente), ao contrário da listagem paginada (desc). */
+    private static final Sort REPORT_SORT =
+            Sort.by(Sort.Order.asc("occurredAt"), Sort.Order.asc("id"));
 
     private final TransactionJpaRepository jpaRepository;
     private final TransactionPersistenceMapper mapper;
@@ -73,6 +78,18 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
         var sum = jpaRepository.sumOutflows(
                 userId, TransactionStatus.APPROVED, OUTFLOW_TYPES, dayStartInclusive, dayEndExclusive);
         return sum != null ? sum : BigDecimal.ZERO;
+    }
+
+    @Override
+    public List<Transaction> findActiveForReport(UUID userId, LocalDate from, LocalDate to) {
+        // Reusa a Specification de filtro (usuário/período, exclui soft-deleted) sem tipo/status — assim
+        // o relatório traz APPROVED e REJECTED. A validação de período (from > to) vem do próprio
+        // TransactionQuery. Sem Pageable: o relatório exporta todas as linhas do período.
+        var query = new TransactionQuery(userId, null, null, from, to, null);
+        return jpaRepository.findAll(TransactionSpecifications.matching(query, zoneId), REPORT_SORT)
+                .stream()
+                .map(mapper::toDomain)
+                .toList();
     }
 
     @Override

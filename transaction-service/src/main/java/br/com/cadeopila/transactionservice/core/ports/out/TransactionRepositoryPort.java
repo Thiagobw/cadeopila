@@ -7,6 +7,7 @@ import br.com.cadeopila.transactionservice.core.domain.TransactionQuery;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,4 +40,11 @@ public interface TransactionRepositoryPort {
      * de uso (no fuso da aplicação), nunca via {@code GROUP BY} de data no banco. Nunca retorna {@code null}.
      */
     List<AnalyticsRow> findApprovedByPeriod(UUID userId, Instant startInclusive, Instant endExclusive);
+
+    /**
+     * Transações ativas (não excluídas) do usuário no período {@code [from, to]} (datas inclusivas, no
+     * fuso da aplicação), usadas no relatório (Pedido 7). Inclui APPROVED <b>e</b> REJECTED (o relatório
+     * tem colunas de status/motivo) e ordena por {@code occurredAt} crescente. Nunca retorna {@code null}.
+     */
+    List<Transaction> findActiveForReport(UUID userId, LocalDate from, LocalDate to);
 }

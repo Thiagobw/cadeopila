@@ -251,6 +251,44 @@ class TransactionPersistenceAdapterTest {
         assertThat(adapter.findApprovedByPeriod(UUID.randomUUID(), DAY_START, DAY_END)).isEmpty();
     }
 
+    @Test
+    @DisplayName("findActiveForReport traz APPROVED e REJECTED do usuário no período, excluindo apagadas, de outros e fora do período")
+    void findActiveForReportDeveTrazerAprovadasERejeitadasAtivasDoUsuarioNoPeriodo() {
+        adapter.save(approvedDeposit(USER_A, "500.00", IN_WINDOW));
+        adapter.save(rejectedWithdrawal(USER_A, "30.00", IN_WINDOW));          // rejeitada → entra (tem status/motivo)
+        adapter.save(deletedApprovedTransfer(USER_A, "20.00", IN_WINDOW));     // excluída → fora
+        adapter.save(approvedDeposit(USER_A, "999.00", BEFORE_WINDOW));        // fora do período
+        adapter.save(approvedWithdrawal(USER_B, "70.00", IN_WINDOW));          // outro usuário
+
+        var day = java.time.LocalDate.of(2026, 11, 6);
+        var transactions = adapter.findActiveForReport(USER_A, day, day);
+
+        assertThat(transactions).hasSize(2);
+        assertThat(transactions).extracting(Transaction::getStatus)
+                .containsExactlyInAnyOrder(TransactionStatus.APPROVED, TransactionStatus.REJECTED);
+    }
+
+    @Test
+    @DisplayName("findActiveForReport ordena por occurredAt crescente (cronológico)")
+    void findActiveForReportDeveOrdenarCronologicamente() {
+        var earlier = Instant.parse("2026-11-06T09:00:00Z");
+        var later = Instant.parse("2026-11-06T17:00:00Z");
+        adapter.save(approvedDeposit(USER_A, "20.00", later));
+        adapter.save(approvedDeposit(USER_A, "10.00", earlier));
+
+        var day = java.time.LocalDate.of(2026, 11, 6);
+        var transactions = adapter.findActiveForReport(USER_A, day, day);
+
+        assertThat(transactions).extracting(Transaction::getOccurredAt).containsExactly(earlier, later);
+    }
+
+    @Test
+    @DisplayName("findActiveForReport retorna lista vazia (não nula) quando não há transações")
+    void findActiveForReportDeveRetornarVazio() {
+        var day = java.time.LocalDate.of(2026, 11, 6);
+        assertThat(adapter.findActiveForReport(UUID.randomUUID(), day, day)).isEmpty();
+    }
+
     private Transaction approvedRichPurchase(UUID user, String amount, CategoryLevel1 level1,
                                              String level2, boolean fixed, Instant occurredAt) {
         var data = new NewTransaction(user, TransactionType.PURCHASE, new BigDecimal(amount), "Compra teste",

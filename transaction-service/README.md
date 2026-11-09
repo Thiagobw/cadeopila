@@ -77,11 +77,34 @@ real** usando a MockAPI como ponto de partida:
 | DELETE | `/api/v1/transactions/{id}` | Exclusão **lógica** (apenas REJECTED; preserva o histórico) — 422 se APPROVED |
 | GET | `/api/v1/accounts/balance?userId=...` | Saldo atual derivado + limites + consumo do dia |
 | GET | `/api/v1/analytics/expenses/summary?userId=...&month=MM-YYYY` | Análise de despesas do mês (padrão = mês atual): visão geral, raio-X por grau de necessidade, onde cortar (top 5), custo fixo, total por dia e alerta do "buraco negro" |
+| GET | `/api/v1/transactions/report?userId=...&from=&to=&format=csv\|xlsx\|pdf` | **Relatório** das transações do período (padrão = mês atual) para **download** — CSV (UTF-8 com BOM, `;`), Excel `.xlsx` nativo ou PDF |
 
 > "Corrigir sem apagar" (critério do PO): a correção é feita por **nova transação** ou por edição de metadados;
 > a "remoção" é **soft delete** (`deleted_at`), restrita a transações rejeitadas, preservando o histórico.
 
 Swagger UI: `http://localhost:8082/swagger-ui.html` · OpenAPI JSON: `/v3/api-docs`.
+
+## Rotas e relatórios (exportação CSV/Excel)
+
+A rota `GET /api/v1/transactions/report` baixa as transações do usuário num período (datas inclusivas no fuso
+`America/Sao_Paulo`; sem `from`/`to` usa o **mês atual**). Inclui transações **APPROVED e REJECTED** (com as
+colunas de status e motivo) e **exclui** as removidas (_soft delete_). Colunas: data, tipo, categoria nível 1,
+subcategoria, descrição, valor em BRL, status, motivo da rejeição e valores convertidos USD/EUR do _snapshot_
+de câmbio. O formato é escolhido por **content negotiation** no parâmetro `?format=`:
+
+- `?format=csv` (padrão): **UTF-8 com BOM** + separador `;` + decimal com vírgula, para **abrir no Excel pt-BR
+  sem quebrar acento**; descrições com `;`/aspas/quebra de linha são escapadas (RFC-4180).
+- `?format=xlsx`: planilha **`.xlsx` nativa** (Apache POI) com datas e moedas em **células tipadas** (somáveis),
+  cabeçalho congelado e colunas auto-dimensionadas.
+- `?format=pdf`: documento **PDF** (OpenPDF) em tabela paisagem A4 — formato de apresentação para impressão/anexo.
+
+Todos respondem com `Content-Disposition: attachment; filename="relatorio.csv|.xlsx|.pdf"`. A **formatação do
+arquivo mora na camada de adapters** (`TransactionCsvWriter`/`TransactionExcelWriter`/`TransactionPdfWriter`): o
+core/application só lidam com `ReportRow` tipado e não conhecem CSV, BOM, Apache POI nem OpenPDF (ArchUnit verde).
+Detalhes de decisão em [`docs/PEDIDO-7-RELATORIO.md`](docs/PEDIDO-7-RELATORIO.md).
+
+> **Autenticação (Pedido 6) ainda não aplicada:** enquanto não há "usuário do contexto", o relatório recebe o
+> `userId` por parâmetro; quando o auth entrar, passa a usar a identidade autenticada.
 
 ## Variáveis de ambiente
 
