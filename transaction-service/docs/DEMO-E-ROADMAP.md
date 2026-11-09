@@ -1,7 +1,8 @@
 # MS2 (transaction-service) — Roteiro de demo e handoff
 
-Estado em 2026-11-08. Pedidos **1, 2, 3 e 5** entregues e verdes (`mvnw -pl transaction-service verify` →
-163 testes, 0 falhas; ArchUnit verde).
+Estado em 2026-11-09. Pedidos **1, 2, 3, 5 e 7** entregues e verdes (`mvnw -pl transaction-service verify` →
+**190 testes, 0 falhas; ArchUnit verde**). O Pedido 7 somou a suíte do relatório (writers CSV/Excel/PDF, caso
+de uso, controller e integração).
 
 > **Como subir, buildar e configurar a API Mock:** ver a seção **"Como rodar"** do
 > [`../README.md`](../README.md) (convenção: instruções de execução ficam no README). Este documento é só o
@@ -51,6 +52,10 @@ Mapeado ao roteiro do PO, recortado para o MS2. Use o `<UUID>` cadastrado no Moc
   nível 2 livre) + flags `isFixed`/`isRecurring` na criação; regra de fricção do "OUTROS" (descrição ≥ 5) validada no
   domínio → 400. Payload com 4 blocos (visão geral, raio-X por nível 1 c/ % da receita, onde cortar top 5, custo fixo),
   total por dia e alerta do "buraco negro" (OUTROS > 5%). **Agregação em Java no fuso `America/Sao_Paulo`** (sem `GROUP BY` de data).
+- **Pedido 7 (relatório):** `GET /api/v1/transactions/report?userId=&from=&to=&format=csv|xlsx|pdf` (padrão = mês
+  atual). CSV UTF-8 **com BOM** + `;` + decimal com vírgula (Excel pt-BR, com escaping), Excel `.xlsx` nativo
+  (Apache POI, células tipadas somáveis) e PDF (OpenPDF, tabela paisagem). Formatação só em `adapters/in/web`;
+  core devolve `ReportRow` tipado (ArchUnit verde).
 - **Pedido 8 (qualidade):** Bean Validation + ProblemDetail; Swagger; README técnico; JaCoCo; sem segredos no repo.
 
 Arquitetura: `core` (JDK) → `application` (casos de uso) → `adapters/{in.web, out.account, out.exchange, out.persistence, config}`.
@@ -75,16 +80,21 @@ ESTILO_DE_VIDA ou DIVIDAS_IMPREVISTOS), **custo fixo** (`isFixed`), total **por 
 (opcionais; nível 1 derivado da categoria quando ausente) e a **regra de fricção do "OUTROS"** (descrição ≥ 5,
 validada no domínio → 400). Agregação **em Java no fuso `America/Sao_Paulo`**; migration **V3** adiciona as colunas.
 
-### (B) Pedido 7 — Relatório de transações em CSV (MS2) — DEPOIS de (A)
-**Critério de aceite:** rota que devolve CSV para download das transações do usuário num período; colunas mínimas
-`data, tipo, categoria, descrição, valor_brl, status, motivo` (pode somar valor convertido); **abre no Excel pt-BR
-sem quebrar acento** e com separador reconhecível.
-**Design/atenção:**
-- `GET /api/v1/transactions/report?userId=&from=&to=` com `produces="text/csv"` e header `Content-Disposition: attachment; filename=...`.
-- **Encoding:** UTF-8 **com BOM** + separador `;` (Excel pt-BR). Escapar `;`/aspas/quebra de linha nas descrições. Testar o arquivo abrindo no Excel (critério explícito do PO).
-- Reusar `ListTransactionsUseCase`/`TransactionRepositoryPort.search` (sem paginação / página grande) para o período.
-- "Só do usuário autenticado": enquanto **não há auth**, usar `userId` como parâmetro; quando Pedido 6 entrar, trocar por usuário do contexto de segurança.
-- **Testes:** conteúdo do CSV (colunas, acentos, separador), filtro por usuário/período, header de download.
+### (B) Pedido 7 — Relatório de transações (CSV + Excel + PDF) — ✅ CONCLUÍDO
+**Decisões da entrega** em [`PEDIDO-7-RELATORIO.md`](PEDIDO-7-RELATORIO.md).
+
+Rota **`GET /api/v1/transactions/report?userId=&from=&to=&format=csv|xlsx|pdf`** (sem período → mês atual).
+Inclui **APPROVED e REJECTED**, exclui _soft deleted_; colunas: data, tipo, categoria nível 1, subcategoria,
+descrição, valor BRL, status, motivo e valores convertidos USD/EUR do _snapshot_. Download via
+`Content-Disposition: attachment`.
+- **CSV:** UTF-8 **com BOM** + separador `;` + decimal com vírgula (abre no Excel pt-BR sem quebrar acento);
+  escaping RFC-4180 de `;`/aspas/quebra de linha.
+- **Excel (bônus):** `.xlsx` nativo via **Apache POI**, com datas/moedas em **células tipadas** (somáveis),
+  cabeçalho congelado e colunas auto-dimensionadas.
+- **PDF:** documento via **OpenPDF** (tabela paisagem A4), formato de apresentação para impressão/anexo.
+- **Hexagonal:** o caso de uso devolve `ReportRow` tipado; a formatação (CSV/Excel/PDF/BOM/POI/OpenPDF) vive só
+  em `adapters/in/web` (`TransactionCsvWriter`/`TransactionExcelWriter`/`TransactionPdfWriter`). ArchUnit verde.
+- **Sem auth (Pedido 6 ainda não entrou):** `userId` por parâmetro; trocar por identidade autenticada depois.
 
 ### (C) Pedido 6 — Segurança básica (auth) — POR ÚLTIMO
 - Versão obrigatória: **Basic Auth** (usuário+senha) validando contra o MS1 ou base simples; rotas de transação/saldo/análise/relatório exigem autenticação; cadastro e docs ficam abertos; um usuário não acessa transações de outro; senha nunca em resposta/log.
