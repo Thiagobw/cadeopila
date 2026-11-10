@@ -109,6 +109,41 @@ class UserControllerTest {
     }
 
     @Test
+    @DisplayName("POST com CPF duplicado deve retornar 409 com o CPF mascarado no corpo (sem expor o CPF cru)")
+    void createComCpfDuplicadoDeveRetornar409ComCpfMascarado() throws Exception {
+        // O caso de uso já mascara o CPF na origem; o handler apenas repassa o valor seguro.
+        when(createUser.create(any()))
+                .thenThrow(new UserAlreadyExistsException("cpf", "***.***.***-01"));
+
+        var body = """
+                {"name":"Maria","email":"maria@email.com","cpf":"12345678901","password":"senha123"}
+                """;
+
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.field").value("cpf"))
+                .andExpect(jsonPath("$.value").value("***.***.***-01"))
+                .andExpect(jsonPath("$.detail").value(endsWith("***.***.***-01")));
+    }
+
+    @Test
+    @DisplayName("POST com senha acima de 72 caracteres deve retornar 400 indicando o campo password")
+    void createComSenhaAcimaDe72DeveRetornar400() throws Exception {
+        var senhaLonga = "a".repeat(73);
+        var body = """
+                {"name":"Maria","email":"maria@email.com","cpf":"12345678901","password":"%s"}
+                """.formatted(senhaLonga);
+
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.violations[0].field").value("password"));
+    }
+
+    @Test
     @DisplayName("POST válido deve retornar 201 com Location e email normalizado na chamada ao caso de uso")
     void createValidoDeveRetornar201ComEmailNormalizado() throws Exception {
         var id = UUID.randomUUID();

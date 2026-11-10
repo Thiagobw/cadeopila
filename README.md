@@ -25,37 +25,42 @@ Sobe o ambiente inteiro — PostgreSQL 17 + `user-service` (MS1, porta **8081**)
 ### Pré-requisitos
 - Docker e Docker Compose.
 - Para build/testes locais sem Docker: JDK 25.
-- `.env` na raiz (copie de `.env.example`) com as senhas e, para o MS2, as URLs de integração
-  (`ACCOUNT_API_BASE_URL`, `EXCHANGE_API_BASE_URL`).
+- `.env` na raiz (copie de `.env.example`) com as senhas e, para o MS2, o `ACCOUNT_API_BASE_URL`.
 
 ### Subir com Docker Compose (do zero)
 ```bash
-cp .env.example .env      # preencha as senhas e o ACCOUNT_API_BASE_URL (MS2)
-docker compose up --build
+cp .env.example .env            # preencha as senhas e o ACCOUNT_API_BASE_URL (MS2)
+docker compose up --build -d    # sobe PostgreSQL + MS1 + MS2 em segundo plano
 ```
-Sobe os 3 containers. Swagger: MS1 em `http://localhost:8081/swagger-ui.html`,
-MS2 em `http://localhost:8082/swagger-ui.html`.
+Um único comando sobe os 3 containers. Acompanhe os logs com `docker compose logs -f` e derrube com
+`docker compose down`. Após o start, o **Swagger UI** de cada serviço:
 
-### Configurar a API Mock (MS2 — saldo e limites)
-`ACCOUNT_API_BASE_URL` aponta para um recurso `accounts` no [mockapi.io](https://mockapi.io) (URL base, **sem**
-`/accounts`), com um registro por usuário: `userId`, `balance`, `dailyLimit`, `transactionLimit`. Detalhes no
-[README do transaction-service](transaction-service/README.md).
+| Serviço | Swagger UI | OpenAPI JSON |
+|---|---|---|
+| **MS1 — user-service** | `http://localhost:8081/swagger-ui.html` (ou `/swagger-ui/index.html`) | `http://localhost:8081/v3/api-docs` |
+| **MS2 — transaction-service** | `http://localhost:8082/swagger-ui.html` (ou `/swagger-ui/index.html`) | `http://localhost:8082/v3/api-docs` |
 
 ### Build e testes
+Os testes do `user-service` são unitários e de fatia web (`@WebMvcTest`), **sem dependência de banco de
+dados** — os casos de uso usam Mockito e o adapter de persistência tem o repositório Spring Data mockado.
+**Nenhum banco precisa estar no ar para rodá-los.**
+
 Todos os módulos, a partir da raiz:
 ```bash
 ./mvnw -B -ntp clean verify
 ```
-Por serviço:
+Só os testes unitários (Maven wrapper), sem subir banco nem empacotar:
 ```bash
-./mvnw -B -ntp -pl user-service verify
-./mvnw -B -ntp -pl transaction-service verify
+./mvnw -B -ntp clean test                  # todos os módulos
+./mvnw -B -ntp -pl user-service clean test # só o MS1 (user-service)
 ```
-Os testes do `user-service` são unitários e de fatia web (`@WebMvcTest`), **sem banco no ar**. Os do
-`transaction-service` incluem fatia (`@WebMvcTest`/`@DataJpaTest` com H2 em modo PostgreSQL), integração
-(`@SpringBootTest` com as portas externas mockadas) e arquitetura (ArchUnit).
 
 ### Cobertura (JaCoCo)
-Gerada na fase `verify`:
+`./mvnw clean test` já grava os dados de cobertura (`jacoco.exec`) ao rodar os testes; o **relatório HTML**
+é emitido na fase `verify`:
+```bash
+./mvnw -B -ntp clean verify
+```
+Abra o relatório de cada módulo em:
 - `user-service/target/site/jacoco/index.html`
 - `transaction-service/target/site/jacoco/index.html`
