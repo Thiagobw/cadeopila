@@ -13,6 +13,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -101,5 +102,39 @@ class UserPersistenceAdapterTest {
         // Then
         assertThat(result.getEmail()).isEqualTo("maria@email.com");
         assertThat(result.getCpf()).isEqualTo("12345678901");
+    }
+
+    @Test
+    @DisplayName("findByEmail deve mapear a entidade para domínio quando encontrada")
+    void findByEmailDeveMapearParaDominio() {
+        // Given
+        var now = LocalDateTime.now();
+        var entity = new UserJpaEntity();
+        entity.setId(UUID.randomUUID());
+        entity.setName("Maria");
+        entity.setEmail("maria@email.com");
+        entity.setCpf("12345678901");
+        entity.setPasswordHash("HASH");
+        entity.setCreatedAt(now);
+        entity.setUpdatedAt(now);
+        when(jpaRepository.findByEmail("maria@email.com")).thenReturn(Optional.of(entity));
+
+        // When
+        var result = adapter.findByEmail("maria@email.com");
+
+        // Then
+        assertThat(result).get()
+                .extracting(User::getEmail, User::getPasswordHash)
+                .containsExactly("maria@email.com", "HASH");
+    }
+
+    @Test
+    @DisplayName("findByEmail deve retornar vazio quando não encontrada")
+    void findByEmailDeveRetornarVazio() {
+        // Given
+        when(jpaRepository.findByEmail("fantasma@email.com")).thenReturn(Optional.empty());
+
+        // When / Then
+        assertThat(adapter.findByEmail("fantasma@email.com")).isEmpty();
     }
 }
