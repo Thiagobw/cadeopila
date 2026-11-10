@@ -47,7 +47,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/users_db
       SPRING_DATASOURCE_USERNAME: ${USERS_DB_USER:?}
       SPRING_DATASOURCE_PASSWORD: ${USERS_DB_PASSWORD:?}
-      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
     ports:
       - "8081:8080"
     networks:

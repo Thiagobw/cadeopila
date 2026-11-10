@@ -49,6 +49,7 @@ build/
 
 ### Claude Code ###
 .claude/
+.mcp.json
 
 ### environment variables ###
 .env
@@ -74,6 +75,9 @@ application-prod.yaml
 application-secret*.properties
 application-secret*.yml
 application-secret*.yaml
+
+### Documentos internos (não versionados) ###
+*.local.md
 
 ### Docker ###
 docker-compose.override.yml
