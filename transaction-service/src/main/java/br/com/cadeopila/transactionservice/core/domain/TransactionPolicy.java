@@ -9,6 +9,9 @@ import java.util.Optional;
  *
  * <p>Ordem: limite por transação → saldo atual → limite diário. O saldo atual e o gasto do dia são
  * calculados pelo caso de uso a partir do histórico aprovado do MS2 (a Mock é somente leitura).</p>
+ *
+ * <p>Fallback defensivo: um limite nulo (a MockAPI pode omitir) faz aquela restrição não se aplicar —
+ * evita {@code NullPointerException}/500 sem bloquear transações por falha de dado da origem.</p>
  */
 public final class TransactionPolicy {
 
@@ -21,13 +24,15 @@ public final class TransactionPolicy {
         if (!type.isOutflow()) {
             return Optional.empty();
         }
-        if (amount.compareTo(transactionLimit) > 0) {
+        // Limites podem vir nulos da MockAPI: nesse caso a restrição não se aplica (evita 500 e bloqueio
+        // indevido). O saldo atual continua protegendo contra gasto acima do disponível.
+        if (transactionLimit != null && amount.compareTo(transactionLimit) > 0) {
             return Optional.of(RejectionReason.TRANSACTION_LIMIT_EXCEEDED);
         }
         if (amount.compareTo(currentBalance) > 0) {
             return Optional.of(RejectionReason.INSUFFICIENT_BALANCE);
         }
-        if (approvedOutflowsToday.add(amount).compareTo(dailyLimit) > 0) {
+        if (dailyLimit != null && approvedOutflowsToday.add(amount).compareTo(dailyLimit) > 0) {
             return Optional.of(RejectionReason.DAILY_LIMIT_EXCEEDED);
         }
         return Optional.empty();

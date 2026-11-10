@@ -96,4 +96,27 @@ class TransactionCsvWriterTest {
 
         assertThat(content).contains("Alimentação").contains("Pão & café").contains("Nível");
     }
+
+    @Test
+    @DisplayName("Previne CSV Injection (CWE-1236): campos livres iniciados por =,+,-,@ recebem apóstrofo")
+    void devePrevenirCsvInjection() {
+        var row = new ReportRow(LocalDate.of(2026, 11, 7), TransactionType.PURCHASE,
+                CategoryLevel1.ESSENCIAL, "+rebate", "=SOMA(A1)",
+                new BigDecimal("10.00"), TransactionStatus.APPROVED, null, null, null);
+
+        String content = textAfterBom(writer.write(List.of(row)));
+        String[] lines = content.split("\r\n");
+
+        // Descrição "=SOMA(A1)" → "'=SOMA(A1)"; subcategoria "+rebate" → "'+rebate" (o Excel não executa a fórmula).
+        assertThat(lines[1]).isEqualTo("07/11/2026;Compra;Essencial;'+rebate;'=SOMA(A1);10,00;Aprovada;;;");
+    }
+
+    @Test
+    @DisplayName("Descrição normal (não começa com gatilho) não ganha apóstrofo")
+    void descricaoNormalNaoGanhaApostrofo() {
+        String content = textAfterBom(writer.write(List.of(approved())));
+        String[] lines = content.split("\r\n");
+
+        assertThat(lines[1]).doesNotContain(";'");
+    }
 }

@@ -63,4 +63,31 @@ class TransactionPolicyTest {
     void valoresNoLimiteNaoRejeitam() {
         assertThat(evaluate(TransactionType.WITHDRAWAL, "300.00", "300.00", "300.00", "300.00", "0")).isEmpty();
     }
+
+    @Test
+    @DisplayName("Limite por transação nulo (MockAPI): a restrição não se aplica e não lança NPE")
+    void limitePorTransacaoNuloNaoAplicaNemQuebra() {
+        var result = policy.evaluate(TransactionType.WITHDRAWAL, new BigDecimal("100.00"),
+                new BigDecimal("1000.00"), null, new BigDecimal("800.00"), new BigDecimal("0"));
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Limite diário nulo (MockAPI): a restrição não se aplica e não lança NPE")
+    void limiteDiarioNuloNaoAplicaNemQuebra() {
+        var result = policy.evaluate(TransactionType.WITHDRAWAL, new BigDecimal("100.00"),
+                new BigDecimal("1000.00"), new BigDecimal("300.00"), null, new BigDecimal("750.00"));
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Mesmo com ambos os limites nulos, o saldo insuficiente ainda rejeita (nunca vira 500)")
+    void saldoInsuficienteAindaRejeitaComLimitesNulos() {
+        var result = policy.evaluate(TransactionType.WITHDRAWAL, new BigDecimal("100.00"),
+                new BigDecimal("50.00"), null, null, new BigDecimal("0"));
+
+        assertThat(result).contains(RejectionReason.INSUFFICIENT_BALANCE);
+    }
 }

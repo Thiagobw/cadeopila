@@ -277,4 +277,24 @@ class CreateTransactionUseCaseImplTest {
         assertThat(result.transaction().getStatus()).isEqualTo(TransactionStatus.APPROVED);
         assertThat(result.balanceAfter()).isEqualByComparingTo("100.00"); // 100 + 500 − 500
     }
+
+    @Test
+    @DisplayName("Limites nulos da MockAPI não causam 500: a transação é avaliada só pelo saldo")
+    void limitesNulosDaMockNaoQuebram() {
+        when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
+        // dailyLimit e transactionLimit nulos (a MockAPI pode omiti-los).
+        when(accountPort.findByUserId(USER)).thenReturn(Optional.of(
+                new AccountSnapshot(USER, new BigDecimal("1000.00"), null, null)));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = useCase().create(new Command(USER, TransactionType.WITHDRAWAL, new BigDecimal("500.00"),
+                "Saque", null, null));
+
+        // Só o saldo (1000) decide — nenhum NPE por limite nulo.
+        assertThat(result.transaction().getStatus()).isEqualTo(TransactionStatus.APPROVED);
+        assertThat(result.balanceAfter()).isEqualByComparingTo("500.00");
+    }
 }
