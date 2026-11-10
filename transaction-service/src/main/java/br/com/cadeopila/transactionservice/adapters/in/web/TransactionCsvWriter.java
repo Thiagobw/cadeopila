@@ -20,6 +20,8 @@ import java.util.Locale;
  *   <li>Decimal com <b>vírgula</b> (Locale pt-BR), sem separador de milhar, para o Excel ler como número.</li>
  *   <li><b>Escape</b> RFC-4180: campos com {@code ;}, aspas ou quebra de linha são envoltos em aspas duplas,
  *       com as aspas internas dobradas — descrições "difíceis" não desalinham as colunas.</li>
+ *   <li><b>Anti CSV Injection</b> (CWE-1236): campos livres (descrição/subcategoria) que começam com
+ *       {@code = + - @} recebem um apóstrofo, para o Excel não executá-los como fórmula.</li>
  * </ul>
  */
 @Component
@@ -52,8 +54,8 @@ public class TransactionCsvWriter {
                 DATE.format(row.date()),
                 ReportLabels.type(row.type()),
                 ReportLabels.categoryLevel1(row.categoryLevel1()),
-                nullToEmpty(row.categoryLevel2()),
-                row.description(),
+                sanitizeAgainstInjection(nullToEmpty(row.categoryLevel2())),
+                sanitizeAgainstInjection(row.description()),
                 money(row.amountBrl()),
                 ReportLabels.status(row.status()),
                 ReportLabels.rejectionReason(row.rejectionReason()),
@@ -85,6 +87,22 @@ public class TransactionCsvWriter {
             return value;
         }
         return '"' + value.replace("\"", "\"\"") + '"';
+    }
+
+    /** Caracteres que, no início de uma célula, fazem o Excel/Sheets interpretá-la como fórmula. */
+    private static final String FORMULA_TRIGGERS = "=+-@";
+
+    /**
+     * Prevenção de CSV Injection (CWE-1236): se um campo controlado pelo usuário começa com
+     * {@code =}, {@code +}, {@code -} ou {@code @}, prefixa um apóstrofo para o Excel/Sheets tratarem a
+     * célula como texto, não fórmula. Aplicado só aos campos livres (descrição e subcategoria); datas,
+     * rótulos e valores numéricos são gerados pelo sistema. O {@link #escape} seguinte cuida do RFC-4180.
+     */
+    private static String sanitizeAgainstInjection(String value) {
+        if (value != null && !value.isEmpty() && FORMULA_TRIGGERS.indexOf(value.charAt(0)) >= 0) {
+            return "'" + value;
+        }
+        return value;
     }
 
     /** BigDecimal → texto pt-BR com 2 casas e vírgula decimal (ex.: {@code 1500,00}); {@code null} → vazio. */
