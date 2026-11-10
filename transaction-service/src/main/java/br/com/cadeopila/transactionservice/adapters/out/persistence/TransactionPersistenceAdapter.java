@@ -81,6 +81,12 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
     }
 
     @Override
+    public BigDecimal sumApprovedIncomingTransfers(UUID userId) {
+        var sum = jpaRepository.sumIncomingTransfers(userId, TransactionType.TRANSFER, TransactionStatus.APPROVED);
+        return sum != null ? sum : BigDecimal.ZERO;
+    }
+
+    @Override
     public List<Transaction> findActiveForReport(UUID userId, LocalDate from, LocalDate to) {
         // Reusa a Specification de filtro (usuário/período, exclui soft-deleted) sem tipo/status — assim
         // o relatório traz APPROVED e REJECTED. A validação de período (from > to) vem do próprio

@@ -48,6 +48,17 @@ public interface TransactionJpaRepository
                            @Param("end") Instant end);
 
     @Query("""
+            SELECT SUM(t.amount) FROM TransactionJpaEntity t
+            WHERE t.destinationUserId = :userId
+              AND t.type = :transferType
+              AND t.status = :status
+              AND t.deletedAt IS NULL
+            """)
+    BigDecimal sumIncomingTransfers(@Param("userId") UUID userId,
+                                    @Param("transferType") TransactionType transferType,
+                                    @Param("status") TransactionStatus status);
+
+    @Query("""
             SELECT t FROM TransactionJpaEntity t
             WHERE t.userId = :userId
               AND t.status = :status

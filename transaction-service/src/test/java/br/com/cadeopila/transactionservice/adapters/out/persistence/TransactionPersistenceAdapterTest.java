@@ -214,6 +214,20 @@ class TransactionPersistenceAdapterTest {
     }
 
     @Test
+    @DisplayName("sumApprovedIncomingTransfers soma transferências APROVADAS e ativas recebidas pelo usuário (destinatário)")
+    void sumApprovedIncomingTransfersDeveSomarRecebidas() {
+        adapter.save(approvedTransfer(USER_B, USER_A, "200.00", IN_WINDOW));    // recebida por A → entra
+        adapter.save(approvedTransfer(USER_B, USER_A, "50.00", BEFORE_WINDOW)); // recebida por A (sem filtro de período)
+        adapter.save(rejectedTransfer(USER_B, USER_A, "999.00", IN_WINDOW));    // rejeitada → fora
+        adapter.save(deletedTransfer(USER_B, USER_A, "20.00", IN_WINDOW));      // excluída → fora
+        adapter.save(approvedWithdrawal(USER_A, "70.00", IN_WINDOW));           // não é transferência recebida → fora
+        adapter.save(approvedTransfer(USER_A, USER_B, "300.00", IN_WINDOW));    // A é remetente, não destinatário → fora
+
+        assertThat(adapter.sumApprovedIncomingTransfers(USER_A)).isEqualByComparingTo("250.00");
+        assertThat(adapter.sumApprovedIncomingTransfers(UUID.randomUUID())).isEqualByComparingTo("0");
+    }
+
+    @Test
     @DisplayName("findApprovedByPeriod traz depósitos e saídas APROVADAS e ativas do usuário no período")
     void findApprovedByPeriodDeveTrazerSoAprovadasAtivasDoUsuarioNoPeriodo() {
         adapter.save(approvedDeposit(USER_A, "500.00", IN_WINDOW));
@@ -319,6 +333,24 @@ class TransactionPersistenceAdapterTest {
 
     private Transaction deletedApprovedTransfer(UUID user, String amount, Instant occurredAt) {
         return Transaction.rehydrate(null, user, DESTINATION, TransactionType.TRANSFER, new BigDecimal(amount),
+                "Transferência", TransactionCategory.OTHER, TransactionStatus.APPROVED, null, occurredAt,
+                List.of(), NOW, NOW, NOW, 0L);
+    }
+
+    private Transaction approvedTransfer(UUID sender, UUID destination, String amount, Instant occurredAt) {
+        var data = new NewTransaction(sender, TransactionType.TRANSFER, new BigDecimal(amount),
+                "Transferência", null, destination);
+        return Transaction.approved(data, occurredAt, List.of(), NOW);
+    }
+
+    private Transaction rejectedTransfer(UUID sender, UUID destination, String amount, Instant occurredAt) {
+        var data = new NewTransaction(sender, TransactionType.TRANSFER, new BigDecimal(amount),
+                "Transferência", null, destination);
+        return Transaction.rejected(data, RejectionReason.INSUFFICIENT_BALANCE, occurredAt, List.of(), NOW);
+    }
+
+    private Transaction deletedTransfer(UUID sender, UUID destination, String amount, Instant occurredAt) {
+        return Transaction.rehydrate(null, sender, destination, TransactionType.TRANSFER, new BigDecimal(amount),
                 "Transferência", TransactionCategory.OTHER, TransactionStatus.APPROVED, null, occurredAt,
                 List.of(), NOW, NOW, NOW, 0L);
     }
