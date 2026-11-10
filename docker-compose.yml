@@ -74,6 +74,8 @@ services:
       # Integrações externas (URLs base, sem o caminho do recurso). Ver .env.example.
       ACCOUNT_API_BASE_URL: ${ACCOUNT_API_BASE_URL}
       EXCHANGE_API_BASE_URL: ${EXCHANGE_API_BASE_URL:-https://brasilapi.com.br/api}
+      # Autenticação: o MS2 valida o Basic Auth chamando o MS1 nesta URL (nome do serviço na rede Docker).
+      USER_API_BASE_URL: ${USER_API_BASE_URL:-http://user-service:8080}
     ports:
       - "8082:8080"
     networks:
@@ -81,6 +83,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      user-service:
+        condition: service_started
 
 # ──────────────────────────────────────────────────────────────────────
 networks:
