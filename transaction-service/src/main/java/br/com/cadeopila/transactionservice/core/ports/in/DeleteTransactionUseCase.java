@@ -4,5 +4,6 @@ import java.util.UUID;
 
 public interface DeleteTransactionUseCase {
 
-    void delete(UUID id);
+    /** Exclui logicamente, garantindo que a transação pertença a {@code userId} (do contrário, 404). */
+    void delete(UUID id, UUID userId);
 }

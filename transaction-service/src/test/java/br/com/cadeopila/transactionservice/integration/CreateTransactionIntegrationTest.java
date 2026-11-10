@@ -6,12 +6,17 @@ import br.com.cadeopila.transactionservice.core.domain.ExchangeRate;
 import br.com.cadeopila.transactionservice.core.exception.AccountUnavailableException;
 import br.com.cadeopila.transactionservice.core.ports.out.AccountPort;
 import br.com.cadeopila.transactionservice.core.ports.out.ExchangeRatePort;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,8 +33,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Criação ponta a ponta. O dono da transação vem do usuário autenticado (principal {@code USER}),
+ * não mais do corpo. Filtros desligados no MockMvc ({@code addFilters = false}); o Basic Auth real é
+ * coberto por {@code SecurityIntegrationTest}.
+ */
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Transactional
 class CreateTransactionIntegrationTest {
 
@@ -47,6 +57,18 @@ class CreateTransactionIntegrationTest {
 
     @MockitoBean
     private ExchangeRatePort exchangeRatePort;
+
+    @BeforeEach
+    void authenticate() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     private void accountWith(String balance, String dailyLimit, String transactionLimit) {
         when(accountPort.findByUserId(USER)).thenReturn(java.util.Optional.of(
@@ -66,8 +88,8 @@ class CreateTransactionIntegrationTest {
         withUsdQuote();
 
         var body = """
-                {"userId":"%s","type":"PURCHASE","amount":150.00,"description":"Mercado","category":"FOOD"}
-                """.formatted(USER);
+                {"type":"PURCHASE","amount":150.00,"description":"Mercado","category":"FOOD"}
+                """;
 
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -86,8 +108,8 @@ class CreateTransactionIntegrationTest {
         withUsdQuote();
 
         var body = """
-                {"userId":"%s","type":"WITHDRAWAL","amount":100.00,"description":"Saque"}
-                """.formatted(USER);
+                {"type":"WITHDRAWAL","amount":100.00,"description":"Saque"}
+                """;
 
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -105,8 +127,8 @@ class CreateTransactionIntegrationTest {
         withUsdQuote();
 
         var body = """
-                {"userId":"%s","type":"DEPOSIT","amount":500.00,"description":"Depósito"}
-                """.formatted(USER);
+                {"type":"DEPOSIT","amount":500.00,"description":"Depósito"}
+                """;
 
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -133,7 +155,7 @@ class CreateTransactionIntegrationTest {
     }
 
     private void post4(String type, String extraFields) throws Exception {
-        var body = "{\"userId\":\"" + USER + "\",\"type\":\"" + type + "\"," + extraFields + "}";
+        var body = "{\"type\":\"" + type + "\"," + extraFields + "}";
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("APPROVED"));
@@ -143,8 +165,8 @@ class CreateTransactionIntegrationTest {
     @DisplayName("Entrada inválida devolve 400 com ProblemDetail e não grava")
     void entradaInvalidaDevolve400() throws Exception {
         var body = """
-                {"userId":"%s","type":"DEPOSIT","amount":-1,"description":"x"}
-                """.formatted(USER);
+                {"type":"DEPOSIT","amount":-1,"description":"x"}
+                """;
 
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())

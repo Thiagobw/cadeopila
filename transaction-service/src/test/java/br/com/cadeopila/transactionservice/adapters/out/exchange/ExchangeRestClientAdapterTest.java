@@ -39,6 +39,7 @@ class ExchangeRestClientAdapterTest {
         var props = new AppProperties("America/Sao_Paulo",
                 new AppProperties.Exchange(List.of(currencies), BASE_URL),
                 new AppProperties.Account("http://acc"),
+                new AppProperties.User("http://user"),
                 new AppProperties.Http(Duration.ofSeconds(2), Duration.ofSeconds(3)));
         return new ExchangeRestClientAdapter(client, props);
     }

@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -36,11 +37,12 @@ public class ExpenseAnalyticsController {
                     + "Sem o parâmetro month, usa o mês atual (fuso America/Sao_Paulo).")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Resumo do mês"),
-            @ApiResponse(responseCode = "400", description = "Parâmetro inválido (userId ausente ou month fora de MM-YYYY)")
+            @ApiResponse(responseCode = "400", description = "Parâmetro inválido (month fora de MM-YYYY)"),
+            @ApiResponse(responseCode = "401", description = "Não autenticado")
     })
     @GetMapping("/summary")
     public ResponseEntity<ExpenseAnalysisResponse> summary(
-            @RequestParam UUID userId,
+            @AuthenticationPrincipal UUID userId,
             @RequestParam(required = false) String month) {
         var summary = getExpenseAnalysis.summarize(userId, mapper.toYearMonth(month));
         return ResponseEntity.ok(mapper.toResponse(summary));

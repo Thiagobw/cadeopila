@@ -1,18 +1,26 @@
 package br.com.cadeopila.transactionservice.adapters.in.web;
 
 import br.com.cadeopila.transactionservice.adapters.in.web.mapper.ExpenseAnalysisWebMapper;
+import br.com.cadeopila.transactionservice.adapters.in.web.security.SecurityConfig;
 import br.com.cadeopila.transactionservice.core.domain.CategoryLevel1;
 import br.com.cadeopila.transactionservice.core.ports.in.GetExpenseAnalysisUseCase;
+import br.com.cadeopila.transactionservice.core.ports.out.UserAuthenticationPort;
 import br.com.cadeopila.transactionservice.core.ports.in.GetExpenseAnalysisUseCase.CategoryBreakdown;
 import br.com.cadeopila.transactionservice.core.ports.in.GetExpenseAnalysisUseCase.DailyTotal;
 import br.com.cadeopila.transactionservice.core.ports.in.GetExpenseAnalysisUseCase.ExpenseSummary;
 import br.com.cadeopila.transactionservice.core.ports.in.GetExpenseAnalysisUseCase.Overview;
 import br.com.cadeopila.transactionservice.core.ports.in.GetExpenseAnalysisUseCase.SubcategoryTotal;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -29,7 +37,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ExpenseAnalyticsController.class)
-@Import(ExpenseAnalysisWebMapper.class)
+@Import({ExpenseAnalysisWebMapper.class, SecurityConfig.class})
+@AutoConfigureMockMvc(addFilters = false)
 class ExpenseAnalyticsControllerTest {
 
     private static final UUID USER = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479");
@@ -39,6 +48,20 @@ class ExpenseAnalyticsControllerTest {
 
     @MockitoBean
     private GetExpenseAnalysisUseCase getExpenseAnalysis;
+    @MockitoBean
+    private UserAuthenticationPort userAuthenticationPort;
+
+    @BeforeEach
+    void authenticate() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     private ExpenseSummary sampleSummary() {
         return new ExpenseSummary(
@@ -56,7 +79,7 @@ class ExpenseAnalyticsControllerTest {
     void summaryDeveRetornar200() throws Exception {
         when(getExpenseAnalysis.summarize(any(), any())).thenReturn(sampleSummary());
 
-        mockMvc.perform(get("/api/v1/analytics/expenses/summary").param("userId", USER.toString()))
+        mockMvc.perform(get("/api/v1/analytics/expenses/summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.month").value("11-2026"))
                 .andExpect(jsonPath("$.overview.totalIncome").value(5000.00))
@@ -71,19 +94,9 @@ class ExpenseAnalyticsControllerTest {
     }
 
     @Test
-    @DisplayName("GET summary sem userId deve retornar 400 indicando o campo")
-    void summarySemUserIdDeveRetornar400() throws Exception {
-        mockMvc.perform(get("/api/v1/analytics/expenses/summary"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.violations[0].field").value("userId"));
-    }
-
-    @Test
     @DisplayName("GET summary com month fora do formato MM-YYYY deve retornar 400")
     void summaryComMonthInvalidoDeveRetornar400() throws Exception {
-        mockMvc.perform(get("/api/v1/analytics/expenses/summary")
-                        .param("userId", USER.toString())
-                        .param("month", "2026/11"))
+        mockMvc.perform(get("/api/v1/analytics/expenses/summary").param("month", "2026/11"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("month deve estar no formato MM-YYYY (ex.: 11-2026)"));
     }

@@ -23,7 +23,9 @@ public class UpdateTransactionMetadataUseCaseImpl implements UpdateTransactionMe
     @Override
     @Transactional
     public Transaction update(Command command) {
+        // Não-dono é tratado como inexistente (404): não revela a existência de transações alheias.
         var transaction = transactionRepository.findActiveById(command.id())
+                .filter(found -> found.getUserId().equals(command.userId()))
                 .orElseThrow(() -> new TransactionNotFoundException(command.id()));
         var updated = transaction.updateMetadata(command.description(), command.category(), clock.instant());
         return transactionRepository.save(updated);

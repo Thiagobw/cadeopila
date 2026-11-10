@@ -1,6 +1,7 @@
 package br.com.cadeopila.transactionservice.adapters.in.web;
 
 import br.com.cadeopila.transactionservice.adapters.in.web.mapper.TransactionWebMapper;
+import br.com.cadeopila.transactionservice.adapters.in.web.security.SecurityConfig;
 import br.com.cadeopila.transactionservice.core.domain.ExchangeQuote;
 import br.com.cadeopila.transactionservice.core.domain.PageResult;
 import br.com.cadeopila.transactionservice.core.domain.RejectionReason;
@@ -16,13 +17,20 @@ import br.com.cadeopila.transactionservice.core.ports.in.DeleteTransactionUseCas
 import br.com.cadeopila.transactionservice.core.ports.in.FindTransactionByIdUseCase;
 import br.com.cadeopila.transactionservice.core.ports.in.ListTransactionsUseCase;
 import br.com.cadeopila.transactionservice.core.ports.in.UpdateTransactionMetadataUseCase;
+import br.com.cadeopila.transactionservice.core.ports.out.UserAuthenticationPort;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -43,8 +51,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Slice de web do {@link TransactionController}. Os filtros de segurança ficam desligados aqui
+ * ({@code addFilters = false}): o foco é o controller, com o usuário autenticado simulado no
+ * {@link SecurityContextHolder} (o {@code @AuthenticationPrincipal} lê o {@code userId} de lá).
+ * O comportamento real do Basic Auth/filtro vive em {@code SecurityIntegrationTest}.
+ */
 @WebMvcTest(TransactionController.class)
-@Import(TransactionWebMapper.class)
+@Import({TransactionWebMapper.class, SecurityConfig.class})
+@AutoConfigureMockMvc(addFilters = false)
 class TransactionControllerTest {
 
     private static final UUID USER = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479");
@@ -63,6 +78,20 @@ class TransactionControllerTest {
     private UpdateTransactionMetadataUseCase updateTransactionMetadata;
     @MockitoBean
     private DeleteTransactionUseCase deleteTransaction;
+    @MockitoBean
+    private UserAuthenticationPort userAuthenticationPort;
+
+    @BeforeEach
+    void authenticate() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     private Transaction tx(UUID id, TransactionType type, String amount, TransactionStatus status,
                            RejectionReason reason, List<ExchangeQuote> quotes) {
@@ -83,8 +112,8 @@ class TransactionControllerTest {
         when(createTransaction.create(any())).thenReturn(result);
 
         var body = """
-                {"userId":"%s","type":"PURCHASE","amount":150.00,"description":"Mercado","category":"FOOD"}
-                """.formatted(USER);
+                {"type":"PURCHASE","amount":150.00,"description":"Mercado","category":"FOOD"}
+                """;
 
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -103,8 +132,8 @@ class TransactionControllerTest {
         when(createTransaction.create(any())).thenReturn(result);
 
         var body = """
-                {"userId":"%s","type":"WITHDRAWAL","amount":40.00,"description":"Saque"}
-                """.formatted(USER);
+                {"type":"WITHDRAWAL","amount":40.00,"description":"Saque"}
+                """;
 
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -113,23 +142,11 @@ class TransactionControllerTest {
     }
 
     @Test
-    @DisplayName("POST sem userId deve retornar 400 indicando o campo")
-    void postSemUserIdDeveRetornar400() throws Exception {
-        var body = """
-                {"type":"DEPOSIT","amount":500.00,"description":"Depósito"}
-                """;
-
-        mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.violations[0].field").value("userId"));
-    }
-
-    @Test
     @DisplayName("POST com tipo inválido deve retornar 400")
     void postComTipoInvalidoDeveRetornar400() throws Exception {
         var body = """
-                {"userId":"%s","type":"FOO","amount":10.00,"description":"x"}
-                """.formatted(USER);
+                {"type":"FOO","amount":10.00,"description":"x"}
+                """;
 
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest());
@@ -142,8 +159,8 @@ class TransactionControllerTest {
                 .thenThrow(new InvalidTransactionException("destinationUserId é obrigatório em transferência"));
 
         var body = """
-                {"userId":"%s","type":"TRANSFER","amount":10.00,"description":"PIX"}
-                """.formatted(USER);
+                {"type":"TRANSFER","amount":10.00,"description":"PIX"}
+                """;
 
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())
@@ -157,7 +174,7 @@ class TransactionControllerTest {
     void findByIdDeveRetornar200() throws Exception {
         var id = UUID.randomUUID();
         var quote = new ExchangeQuote("USD", new BigDecimal("5.4321"), new BigDecimal("27.61"), "BrasilAPI", TS);
-        when(findTransactionById.findById(id))
+        when(findTransactionById.findById(id, USER))
                 .thenReturn(tx(id, TransactionType.PURCHASE, "150.00", TransactionStatus.APPROVED, null, List.of(quote)));
 
         mockMvc.perform(get("/api/v1/transactions/{id}", id))
@@ -168,10 +185,10 @@ class TransactionControllerTest {
     }
 
     @Test
-    @DisplayName("GET /{id} inexistente deve retornar 404")
+    @DisplayName("GET /{id} inexistente (ou de outro dono) deve retornar 404")
     void findByIdInexistenteDeveRetornar404() throws Exception {
         var id = UUID.randomUUID();
-        when(findTransactionById.findById(id)).thenThrow(new TransactionNotFoundException(id));
+        when(findTransactionById.findById(id, USER)).thenThrow(new TransactionNotFoundException(id));
 
         mockMvc.perform(get("/api/v1/transactions/{id}", id)).andExpect(status().isNotFound());
     }
@@ -185,12 +202,12 @@ class TransactionControllerTest {
     // ---------- GET (lista) ----------
 
     @Test
-    @DisplayName("GET lista deve retornar 200 com a página de transações")
+    @DisplayName("GET lista deve retornar 200 com a página de transações do usuário autenticado")
     void listDeveRetornar200() throws Exception {
         var tx = tx(UUID.randomUUID(), TransactionType.DEPOSIT, "500.00", TransactionStatus.APPROVED, null, List.of());
         when(listTransactions.list(any())).thenReturn(new PageResult<>(List.of(tx), 1, 1, 0, 20));
 
-        mockMvc.perform(get("/api/v1/transactions").param("userId", USER.toString()))
+        mockMvc.perform(get("/api/v1/transactions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].type").value("DEPOSIT"))
                 .andExpect(jsonPath("$.totalElements").value(1))
@@ -199,18 +216,9 @@ class TransactionControllerTest {
     }
 
     @Test
-    @DisplayName("GET lista sem userId deve retornar 400 indicando o campo")
-    void listSemUserIdDeveRetornar400() throws Exception {
-        mockMvc.perform(get("/api/v1/transactions"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.violations[0].field").value("userId"));
-    }
-
-    @Test
     @DisplayName("GET lista com período invertido deve retornar 400")
     void listComPeriodoInvertidoDeveRetornar400() throws Exception {
         mockMvc.perform(get("/api/v1/transactions")
-                        .param("userId", USER.toString())
                         .param("from", "2026-11-10")
                         .param("to", "2026-11-01"))
                 .andExpect(status().isBadRequest())
@@ -220,9 +228,7 @@ class TransactionControllerTest {
     @Test
     @DisplayName("GET lista com size acima do limite deve retornar 400 indicando o campo size")
     void listComSizeAcimaDoLimiteDeveRetornar400() throws Exception {
-        mockMvc.perform(get("/api/v1/transactions")
-                        .param("userId", USER.toString())
-                        .param("size", "200"))
+        mockMvc.perform(get("/api/v1/transactions").param("size", "200"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.violations[0].field").value("size"));
     }
@@ -258,7 +264,7 @@ class TransactionControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH em transação inexistente deve retornar 404")
+    @DisplayName("PATCH em transação inexistente (ou de outro dono) deve retornar 404")
     void patchInexistenteDeveRetornar404() throws Exception {
         var id = UUID.randomUUID();
         when(updateTransactionMetadata.update(any())).thenThrow(new TransactionNotFoundException(id));
@@ -289,10 +295,10 @@ class TransactionControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE em transação inexistente deve retornar 404")
+    @DisplayName("DELETE em transação inexistente (ou de outro dono) deve retornar 404")
     void deleteInexistenteDeveRetornar404() throws Exception {
         var id = UUID.randomUUID();
-        doThrow(new TransactionNotFoundException(id)).when(deleteTransaction).delete(id);
+        doThrow(new TransactionNotFoundException(id)).when(deleteTransaction).delete(id, USER);
 
         mockMvc.perform(delete("/api/v1/transactions/{id}", id)).andExpect(status().isNotFound());
     }
@@ -301,7 +307,7 @@ class TransactionControllerTest {
     @DisplayName("DELETE em transação APPROVED deve retornar 422")
     void deleteApprovedDeveRetornar422() throws Exception {
         var id = UUID.randomUUID();
-        doThrow(new TransactionNotDeletableException()).when(deleteTransaction).delete(id);
+        doThrow(new TransactionNotDeletableException()).when(deleteTransaction).delete(id, USER);
 
         mockMvc.perform(delete("/api/v1/transactions/{id}", id))
                 .andExpect(status().isUnprocessableEntity())

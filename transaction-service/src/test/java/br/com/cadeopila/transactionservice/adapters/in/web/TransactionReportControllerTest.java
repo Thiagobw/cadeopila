@@ -4,13 +4,21 @@ import br.com.cadeopila.transactionservice.core.domain.CategoryLevel1;
 import br.com.cadeopila.transactionservice.core.domain.ReportRow;
 import br.com.cadeopila.transactionservice.core.domain.TransactionStatus;
 import br.com.cadeopila.transactionservice.core.domain.TransactionType;
+import br.com.cadeopila.transactionservice.adapters.in.web.security.SecurityConfig;
 import br.com.cadeopila.transactionservice.core.exception.InvalidTransactionFilterException;
 import br.com.cadeopila.transactionservice.core.ports.in.GetTransactionReportUseCase;
+import br.com.cadeopila.transactionservice.core.ports.out.UserAuthenticationPort;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -28,7 +36,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(TransactionReportController.class)
-@Import({TransactionCsvWriter.class, TransactionExcelWriter.class, TransactionPdfWriter.class})
+@Import({TransactionCsvWriter.class, TransactionExcelWriter.class, TransactionPdfWriter.class, SecurityConfig.class})
+@AutoConfigureMockMvc(addFilters = false)
 class TransactionReportControllerTest {
 
     private static final UUID USER = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479");
@@ -40,6 +49,20 @@ class TransactionReportControllerTest {
 
     @MockitoBean
     private GetTransactionReportUseCase getTransactionReport;
+    @MockitoBean
+    private UserAuthenticationPort userAuthenticationPort;
+
+    @BeforeEach
+    void authenticate() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     private static ReportRow row() {
         return new ReportRow(LocalDate.of(2026, 11, 5), TransactionType.PURCHASE,
@@ -52,7 +75,7 @@ class TransactionReportControllerTest {
     void padraoBaixaCsv() throws Exception {
         when(getTransactionReport.generate(any(), any(), any())).thenReturn(List.of(row()));
 
-        mockMvc.perform(get("/api/v1/transactions/report").param("userId", USER.toString()))
+        mockMvc.perform(get("/api/v1/transactions/report"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/csv"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"relatorio.csv\""))
@@ -64,9 +87,7 @@ class TransactionReportControllerTest {
     void formatXlsxBaixaExcel() throws Exception {
         when(getTransactionReport.generate(any(), any(), any())).thenReturn(List.of(row()));
 
-        mockMvc.perform(get("/api/v1/transactions/report")
-                        .param("userId", USER.toString())
-                        .param("format", "xlsx"))
+        mockMvc.perform(get("/api/v1/transactions/report").param("format", "xlsx"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(XLSX_MEDIA_TYPE))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"relatorio.xlsx\""));
@@ -77,9 +98,7 @@ class TransactionReportControllerTest {
     void formatPdfBaixaPdf() throws Exception {
         when(getTransactionReport.generate(any(), any(), any())).thenReturn(List.of(row()));
 
-        var result = mockMvc.perform(get("/api/v1/transactions/report")
-                        .param("userId", USER.toString())
-                        .param("format", "pdf"))
+        var result = mockMvc.perform(get("/api/v1/transactions/report").param("format", "pdf"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/pdf"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"relatorio.pdf\""))
@@ -91,18 +110,9 @@ class TransactionReportControllerTest {
     }
 
     @Test
-    @DisplayName("userId ausente → 400 indicando o campo")
-    void semUserId400() throws Exception {
-        mockMvc.perform(get("/api/v1/transactions/report"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     @DisplayName("format desconhecido → 400 (ProblemDetail do domínio)")
     void formatInvalido400() throws Exception {
-        mockMvc.perform(get("/api/v1/transactions/report")
-                        .param("userId", USER.toString())
-                        .param("format", "txt"))
+        mockMvc.perform(get("/api/v1/transactions/report").param("format", "txt"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -113,7 +123,6 @@ class TransactionReportControllerTest {
                 .thenThrow(new InvalidTransactionFilterException("from não pode ser depois de to"));
 
         mockMvc.perform(get("/api/v1/transactions/report")
-                        .param("userId", USER.toString())
                         .param("from", "2026-11-30")
                         .param("to", "2026-11-01"))
                 .andExpect(status().isBadRequest());

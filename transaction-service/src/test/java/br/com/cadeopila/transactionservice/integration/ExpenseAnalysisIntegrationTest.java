@@ -4,6 +4,7 @@ import br.com.cadeopila.transactionservice.core.domain.AccountSnapshot;
 import br.com.cadeopila.transactionservice.core.domain.ExchangeRate;
 import br.com.cadeopila.transactionservice.core.ports.out.AccountPort;
 import br.com.cadeopila.transactionservice.core.ports.out.ExchangeRatePort;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Transactional
 class ExpenseAnalysisIntegrationTest {
 
@@ -46,11 +50,19 @@ class ExpenseAnalysisIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(
                 new AccountSnapshot(USER, new BigDecimal("100000.00"),
                         new BigDecimal("1000000.00"), new BigDecimal("5000.00"))));
         when(exchangeRatePort.quoteAll(any())).thenReturn(List.of(
                 new ExchangeRate("USD", new BigDecimal("5.00"), "BrasilAPI", Instant.parse("2026-11-06T18:00:00Z"))));
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
     }
 
     private void postCreated(String body) throws Exception {
@@ -78,7 +90,7 @@ class ExpenseAnalysisIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("REJECTED"));
 
-        mockMvc.perform(get("/api/v1/analytics/expenses/summary").param("userId", USER.toString()))
+        mockMvc.perform(get("/api/v1/analytics/expenses/summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.overview.totalIncome").value(5000.00))
                 .andExpect(jsonPath("$.overview.totalExpenses").value(1700.00)) // 1000 + 500 + 200 (rejeitada fora)
@@ -103,7 +115,7 @@ class ExpenseAnalysisIntegrationTest {
     }
 
     private String json(String type, String amount, String description, String extraFields) {
-        var base = "{\"userId\":\"" + USER + "\",\"type\":\"" + type + "\",\"amount\":" + amount
+        var base = "{\"type\":\"" + type + "\",\"amount\":" + amount
                 + ",\"description\":\"" + description + "\"";
         if (extraFields != null && !extraFields.isBlank()) {
             base += "," + extraFields;

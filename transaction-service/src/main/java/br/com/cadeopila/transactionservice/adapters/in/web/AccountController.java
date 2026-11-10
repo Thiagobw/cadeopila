@@ -8,9 +8,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -28,17 +28,17 @@ public class AccountController {
         this.mapper = mapper;
     }
 
-    @Operation(summary = "Consulta o saldo atual e os limites da conta do usuário",
+    @Operation(summary = "Consulta o saldo atual e os limites da conta do usuário autenticado",
             description = "Saldo atual = saldo inicial da Mock + histórico aprovado do MS2. Limites vêm da Mock. "
-                    + "Enquanto não há autenticação, o usuário é informado em userId.")
+                    + "O usuário é o autenticado via Basic Auth.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Saldo e limites"),
-            @ApiResponse(responseCode = "400", description = "userId ausente ou inválido"),
+            @ApiResponse(responseCode = "401", description = "Não autenticado"),
             @ApiResponse(responseCode = "404", description = "Conta inexistente para o usuário"),
             @ApiResponse(responseCode = "503", description = "API de contas indisponível")
     })
     @GetMapping("/balance")
-    public ResponseEntity<AccountBalanceResponse> balance(@RequestParam UUID userId) {
+    public ResponseEntity<AccountBalanceResponse> balance(@AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(mapper.toResponse(getAccountBalance.get(userId)));
     }
 }

@@ -25,6 +25,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -78,8 +79,9 @@ public class TransactionController {
     })
     @PostMapping
     public ResponseEntity<CreateTransactionResponse> create(@Valid @RequestBody CreateTransactionRequest request,
+                                                            @AuthenticationPrincipal UUID userId,
                                                             UriComponentsBuilder uriBuilder) {
-        var result = createTransaction.create(mapper.toCommand(request));
+        var result = createTransaction.create(mapper.toCommand(request, userId));
         var body = mapper.toCreateResponse(result);
         var location = uriBuilder.path("/api/v1/transactions/{id}").buildAndExpand(body.id()).toUri();
         return ResponseEntity.created(location).body(body);
@@ -91,8 +93,9 @@ public class TransactionController {
             @ApiResponse(responseCode = "404", description = "Transação inexistente ou excluída")
     })
     @GetMapping("/{id}")
-    public ResponseEntity<TransactionResponse> findById(@PathVariable UUID id) {
-        return ResponseEntity.ok(mapper.toResponse(findTransactionById.findById(id)));
+    public ResponseEntity<TransactionResponse> findById(@PathVariable UUID id,
+                                                        @AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(mapper.toResponse(findTransactionById.findById(id, userId)));
     }
 
     @Operation(summary = "Lista as transações de um usuário (paginado, máx. " + PageQuery.MAX_SIZE + " por página)",
@@ -103,7 +106,7 @@ public class TransactionController {
     })
     @GetMapping
     public ResponseEntity<PagedResponse<TransactionResponse>> list(
-            @RequestParam UUID userId,
+            @AuthenticationPrincipal UUID userId,
             @RequestParam(required = false) TransactionType type,
             @RequestParam(required = false) TransactionStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -130,8 +133,9 @@ public class TransactionController {
     })
     @PatchMapping("/{id}")
     public ResponseEntity<TransactionResponse> updateMetadata(@PathVariable UUID id,
+                                                             @AuthenticationPrincipal UUID userId,
                                                              @Valid @RequestBody UpdateTransactionMetadataRequest request) {
-        var updated = updateTransactionMetadata.update(mapper.toCommand(id, request));
+        var updated = updateTransactionMetadata.update(mapper.toCommand(id, userId, request));
         return ResponseEntity.ok(mapper.toResponse(updated));
     }
 
@@ -143,8 +147,8 @@ public class TransactionController {
             @ApiResponse(responseCode = "422", description = "Transação APPROVED não pode ser excluída")
     })
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        deleteTransaction.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable UUID id, @AuthenticationPrincipal UUID userId) {
+        deleteTransaction.delete(id, userId);
         return ResponseEntity.noContent().build();
     }
 }

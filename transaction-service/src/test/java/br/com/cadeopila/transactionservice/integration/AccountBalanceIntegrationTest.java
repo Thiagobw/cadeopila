@@ -7,11 +7,16 @@ import br.com.cadeopila.transactionservice.core.domain.TransactionType;
 import br.com.cadeopila.transactionservice.core.exception.AccountUnavailableException;
 import br.com.cadeopila.transactionservice.core.ports.out.AccountPort;
 import br.com.cadeopila.transactionservice.core.ports.out.TransactionRepositoryPort;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,8 +33,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Fluxo real de saldo. A cadeia de segurança fica desligada no MockMvc ({@code addFilters = false});
+ * o usuário autenticado é simulado no {@link SecurityContextHolder} (o {@code @AuthenticationPrincipal}
+ * o lê de lá). O Basic Auth/filtro real é coberto por {@code SecurityIntegrationTest}.
+ */
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Transactional
 class AccountBalanceIntegrationTest {
 
@@ -43,6 +53,18 @@ class AccountBalanceIntegrationTest {
 
     @MockitoBean
     private AccountPort accountPort;
+
+    @BeforeEach
+    void authenticate() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     private Transaction approvedDeposit(String amount) {
         var data = new NewTransaction(USER, TransactionType.DEPOSIT, new BigDecimal(amount), "Depósito", null, null);
@@ -62,7 +84,7 @@ class AccountBalanceIntegrationTest {
         repository.save(approvedDeposit("500.00"));
         repository.save(approvedWithdrawal("200.00"));
 
-        mockMvc.perform(get("/api/v1/accounts/balance").param("userId", USER.toString()))
+        mockMvc.perform(get("/api/v1/accounts/balance"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.balance").value(1300.00))       // 1000 + 500 − 200
                 .andExpect(jsonPath("$.spentToday").value(200.00))     // só a saída aprovada do dia
@@ -74,7 +96,7 @@ class AccountBalanceIntegrationTest {
     void contaInexistente404() throws Exception {
         when(accountPort.findByUserId(USER)).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/api/v1/accounts/balance").param("userId", USER.toString()))
+        mockMvc.perform(get("/api/v1/accounts/balance"))
                 .andExpect(status().isNotFound());
     }
 
@@ -83,7 +105,7 @@ class AccountBalanceIntegrationTest {
     void mockForaDoAr503() throws Exception {
         when(accountPort.findByUserId(any())).thenThrow(new AccountUnavailableException("fora do ar"));
 
-        mockMvc.perform(get("/api/v1/accounts/balance").param("userId", USER.toString()))
+        mockMvc.perform(get("/api/v1/accounts/balance"))
                 .andExpect(status().isServiceUnavailable());
     }
 }

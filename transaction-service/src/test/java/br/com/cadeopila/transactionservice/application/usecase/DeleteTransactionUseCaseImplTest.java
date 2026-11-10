@@ -1,5 +1,6 @@
 package br.com.cadeopila.transactionservice.application.usecase;
 
+import br.com.cadeopila.transactionservice.core.domain.RejectionReason;
 import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import br.com.cadeopila.transactionservice.core.domain.TransactionCategory;
 import br.com.cadeopila.transactionservice.core.domain.TransactionStatus;
@@ -33,6 +34,8 @@ import static org.mockito.Mockito.when;
 class DeleteTransactionUseCaseImplTest {
 
     private static final Instant NOW = Instant.parse("2026-11-06T18:00:00Z");
+    private static final UUID OWNER = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479");
+    private static final UUID OTHER = UUID.fromString("9f1c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8");
 
     @Mock
     private TransactionRepositoryPort transactionRepository;
@@ -42,20 +45,19 @@ class DeleteTransactionUseCaseImplTest {
     }
 
     private Transaction withStatus(UUID id, TransactionStatus status) {
-        var reason = status == TransactionStatus.REJECTED
-                ? br.com.cadeopila.transactionservice.core.domain.RejectionReason.INSUFFICIENT_BALANCE : null;
-        return Transaction.rehydrate(id, UUID.randomUUID(), null, TransactionType.WITHDRAWAL, new BigDecimal("40.00"),
+        var reason = status == TransactionStatus.REJECTED ? RejectionReason.INSUFFICIENT_BALANCE : null;
+        return Transaction.rehydrate(id, OWNER, null, TransactionType.WITHDRAWAL, new BigDecimal("40.00"),
                 "Saque", TransactionCategory.OTHER, status, reason, NOW, List.of(), NOW, NOW, null, 0L);
     }
 
     @Test
-    @DisplayName("Deve excluir logicamente uma transação REJECTED")
+    @DisplayName("Deve excluir logicamente uma transação REJECTED do próprio usuário")
     void deveExcluirRejeitada() {
         var id = UUID.randomUUID();
         when(transactionRepository.findActiveById(id)).thenReturn(Optional.of(withStatus(id, TransactionStatus.REJECTED)));
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        useCase().delete(id);
+        useCase().delete(id, OWNER);
 
         var captor = ArgumentCaptor.forClass(Transaction.class);
         verify(transactionRepository).save(captor.capture());
@@ -69,7 +71,17 @@ class DeleteTransactionUseCaseImplTest {
         var id = UUID.randomUUID();
         when(transactionRepository.findActiveById(id)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> useCase().delete(id)).isInstanceOf(TransactionNotFoundException.class);
+        assertThatThrownBy(() -> useCase().delete(id, OWNER)).isInstanceOf(TransactionNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("Deve lançar 404 quando a transação pertence a outro usuário e não gravar")
+    void deveLancar404QuandoNaoDono() {
+        var id = UUID.randomUUID();
+        when(transactionRepository.findActiveById(id)).thenReturn(Optional.of(withStatus(id, TransactionStatus.REJECTED)));
+
+        assertThatThrownBy(() -> useCase().delete(id, OTHER)).isInstanceOf(TransactionNotFoundException.class);
+        verify(transactionRepository, never()).save(any());
     }
 
     @Test
@@ -78,7 +90,7 @@ class DeleteTransactionUseCaseImplTest {
         var id = UUID.randomUUID();
         when(transactionRepository.findActiveById(id)).thenReturn(Optional.of(withStatus(id, TransactionStatus.APPROVED)));
 
-        assertThatThrownBy(() -> useCase().delete(id)).isInstanceOf(TransactionNotDeletableException.class);
+        assertThatThrownBy(() -> useCase().delete(id, OWNER)).isInstanceOf(TransactionNotDeletableException.class);
         verify(transactionRepository, never()).save(any());
     }
 }

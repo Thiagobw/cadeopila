@@ -26,23 +26,30 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class FindTransactionByIdUseCaseImplTest {
 
+    private static final UUID OWNER = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479");
+    private static final UUID OTHER = UUID.fromString("9f1c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8");
+
     @Mock
     private TransactionRepositoryPort transactionRepository;
 
     @InjectMocks
     private FindTransactionByIdUseCaseImpl useCase;
 
-    @Test
-    @DisplayName("Deve retornar a transação quando ativa")
-    void deveRetornarQuandoAtiva() {
-        var id = UUID.randomUUID();
+    private Transaction ownedBy(UUID id, UUID owner) {
         var now = Instant.parse("2026-11-06T18:00:00Z");
-        var tx = Transaction.rehydrate(id, UUID.randomUUID(), null, TransactionType.DEPOSIT,
+        return Transaction.rehydrate(id, owner, null, TransactionType.DEPOSIT,
                 new BigDecimal("100.00"), "x", TransactionCategory.OTHER, TransactionStatus.APPROVED, null,
                 now, List.of(), now, now, null, 0L);
+    }
+
+    @Test
+    @DisplayName("Deve retornar a transação quando ativa e pertence ao usuário")
+    void deveRetornarQuandoAtivaEDono() {
+        var id = UUID.randomUUID();
+        var tx = ownedBy(id, OWNER);
         when(transactionRepository.findActiveById(id)).thenReturn(Optional.of(tx));
 
-        assertThat(useCase.findById(id)).isSameAs(tx);
+        assertThat(useCase.findById(id, OWNER)).isSameAs(tx);
     }
 
     @Test
@@ -51,7 +58,17 @@ class FindTransactionByIdUseCaseImplTest {
         var id = UUID.randomUUID();
         when(transactionRepository.findActiveById(id)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> useCase.findById(id))
+        assertThatThrownBy(() -> useCase.findById(id, OWNER))
+                .isInstanceOf(TransactionNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("Deve lançar 404 quando a transação pertence a outro usuário (não vaza existência)")
+    void deveLancar404QuandoNaoDono() {
+        var id = UUID.randomUUID();
+        when(transactionRepository.findActiveById(id)).thenReturn(Optional.of(ownedBy(id, OWNER)));
+
+        assertThatThrownBy(() -> useCase.findById(id, OTHER))
                 .isInstanceOf(TransactionNotFoundException.class);
     }
 }

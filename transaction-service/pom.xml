@@ -39,6 +39,12 @@
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
 
+		<!-- Spring Security: autenticação Basic (validada no MS1) e proteção dos endpoints -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
 		<!-- RestClient (clientes HTTP: MockAPI de contas e BrasilAPI) -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
