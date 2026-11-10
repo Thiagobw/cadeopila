@@ -46,6 +46,7 @@ class GetAccountBalanceUseCaseImplTest {
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(
                 new AccountSnapshot(USER, new BigDecimal("1000.00"), new BigDecimal("10000.00"), new BigDecimal("5000.00"))));
         when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(new BigDecimal("200.00"));
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(new BigDecimal("300.00"));
 
         var balance = useCase().get(USER);
@@ -71,5 +72,19 @@ class GetAccountBalanceUseCaseImplTest {
         when(accountPort.findByUserId(USER)).thenThrow(new AccountUnavailableException("fora do ar"));
 
         assertThatThrownBy(() -> useCase().get(USER)).isInstanceOf(AccountUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("Deve somar as transferências recebidas (usuário é destinatário) ao saldo atual")
+    void deveSomarTransferenciasRecebidas() {
+        when(accountPort.findByUserId(USER)).thenReturn(Optional.of(
+                new AccountSnapshot(USER, new BigDecimal("1000.00"), new BigDecimal("10000.00"), new BigDecimal("5000.00"))));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(new BigDecimal("200.00"));
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(new BigDecimal("500.00"));
+        when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+
+        var balance = useCase().get(USER);
+
+        assertThat(balance.balance()).isEqualByComparingTo("1700.00"); // 1000 + 200 + 500
     }
 }

@@ -66,12 +66,13 @@ public class CreateTransactionUseCaseImpl implements CreateTransactionUseCase {
                 command.categoryLevel1(), command.categoryLevel2(), command.fixed(), command.recurring());
 
         var now = clock.instant();
+        var today = now.atZone(zoneId).toLocalDate();
 
         // 2) Câmbio é snapshot e aparece em toda transação gravada (aprovada ou rejeitada).
         // A BrasilAPI não publica a cotação do dia corrente (400 NO_TODAY_DATE); por isso a referência
         // é o último fechamento publicado — D-1 em America/Sao_Paulo. O recuo de até 7 dias (no adapter)
         // cobre fins de semana/feriados caso a própria API não devolva o último dia útil.
-        var quoteDate = now.atZone(zoneId).toLocalDate().minusDays(1);
+        var quoteDate = today.minusDays(1);
         var quotes = toQuotes(data.amount(), quoteDate);
 
         // 3) Conta do dono (somente leitura: saldo inicial + limites).
@@ -87,12 +88,15 @@ public class CreateTransactionUseCaseImpl implements CreateTransactionUseCase {
             return persistRejected(data, RejectionReason.ACCOUNT_SERVICE_UNAVAILABLE, now, quotes, null);
         }
 
-        // 4) Saldo atual = saldo inicial da Mock + histórico aprovado no MS2.
-        var currentBalance = account.balance().add(transactionRepository.sumApprovedSignedAmount(data.userId()));
+        // 4) Saldo atual = saldo inicial da Mock + histórico aprovado + transferências recebidas no MS2.
+        var currentBalance = account.balance()
+                .add(transactionRepository.sumApprovedSignedAmount(data.userId()))
+                .add(transactionRepository.sumApprovedIncomingTransfers(data.userId()));
 
-        // 5) Decisão de negócio (depósito não passa por limites).
+        // 5) Decisão de negócio (depósito não passa por limites). O limite diário olha a janela de HOJE
+        // (fuso da aplicação) — não a data D-1 usada no câmbio.
         var outflowsToday = data.type().isOutflow()
-                ? transactionRepository.sumApprovedOutflowsOfDay(data.userId(), dayStart(quoteDate), dayEnd(quoteDate))
+                ? transactionRepository.sumApprovedOutflowsOfDay(data.userId(), dayStart(today), dayEnd(today))
                 : BigDecimal.ZERO;
         var rejection = policy.evaluate(data.type(), data.amount(), currentBalance,
                 account.transactionLimit(), account.dailyLimit(), outflowsToday);

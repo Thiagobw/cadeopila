@@ -36,8 +36,11 @@ public class GetAccountBalanceUseCaseImpl implements GetAccountBalanceUseCase {
         var account = accountPort.findByUserId(userId)
                 .orElseThrow(() -> new AccountNotFoundException(userId));
 
-        // Saldo atual = saldo inicial da Mock + histórico aprovado do MS2 (a Mock é somente leitura).
-        var currentBalance = account.balance().add(transactionRepository.sumApprovedSignedAmount(userId));
+        // Saldo atual = saldo inicial da Mock + histórico aprovado do MS2 + transferências recebidas
+        // (o usuário como destinatário). A Mock é somente leitura.
+        var currentBalance = account.balance()
+                .add(transactionRepository.sumApprovedSignedAmount(userId))
+                .add(transactionRepository.sumApprovedIncomingTransfers(userId));
 
         LocalDate today = clock.instant().atZone(zoneId).toLocalDate();
         var spentToday = transactionRepository.sumApprovedOutflowsOfDay(userId,

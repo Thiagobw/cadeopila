@@ -33,6 +33,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -82,6 +83,7 @@ class CreateTransactionUseCaseImplTest {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
         when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result = useCase().create(new Command(USER, TransactionType.DEPOSIT, new BigDecimal("500.00"),
@@ -100,6 +102,7 @@ class CreateTransactionUseCaseImplTest {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
         when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -117,6 +120,7 @@ class CreateTransactionUseCaseImplTest {
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
         // histórico aprovado soma +200 → saldo atual 1200
         when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(new BigDecimal("200.00"));
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -133,6 +137,7 @@ class CreateTransactionUseCaseImplTest {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("50.00", "10000.00", "5000.00")));
         when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -184,6 +189,7 @@ class CreateTransactionUseCaseImplTest {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
         when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenThrow(new RuntimeException("falha ao persistir"));
 
         assertThatThrownBy(() -> useCase().create(new Command(USER, TransactionType.DEPOSIT, new BigDecimal("500.00"),
@@ -210,6 +216,7 @@ class CreateTransactionUseCaseImplTest {
         when(exchangeRatePort.quoteAll(LocalDate.of(2026, 11, 5))).thenReturn(List.of(usdRate()));
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
         when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         useCase(clock).create(new Command(USER, TransactionType.DEPOSIT, new BigDecimal("500.00"),
@@ -224,6 +231,7 @@ class CreateTransactionUseCaseImplTest {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of());
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
         when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result = useCase().create(new Command(USER, TransactionType.DEPOSIT, new BigDecimal("500.00"),
@@ -231,5 +239,42 @@ class CreateTransactionUseCaseImplTest {
 
         assertThat(result.transaction().getStatus()).isEqualTo(TransactionStatus.APPROVED);
         assertThat(result.transaction().getExchangeQuotes()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Limite diário usa a janela de HOJE (fuso SP), não a data D-1 do câmbio")
+    void limiteDiarioUsaHojeNaoDMenos1() {
+        when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
+        when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("1000.00", "10000.00", "5000.00")));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase().create(new Command(USER, TransactionType.WITHDRAWAL, new BigDecimal("100.00"), "Saque", null, null));
+
+        // FIXED_NOW = 2026-11-06T15:00Z → 12:00 em São Paulo → hoje(SP) = 2026-11-06 (não D-1 = 05).
+        var start = ArgumentCaptor.forClass(Instant.class);
+        var end = ArgumentCaptor.forClass(Instant.class);
+        verify(transactionRepository).sumApprovedOutflowsOfDay(eq(USER), start.capture(), end.capture());
+        assertThat(start.getValue()).isEqualTo(LocalDate.of(2026, 11, 6).atStartOfDay(ZONE).toInstant());
+        assertThat(end.getValue()).isEqualTo(LocalDate.of(2026, 11, 7).atStartOfDay(ZONE).toInstant());
+    }
+
+    @Test
+    @DisplayName("Transferências recebidas entram no saldo atual (aprova saque que sem elas seria rejeitado)")
+    void transferenciasRecebidasEntramNoSaldo() {
+        when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
+        when(accountPort.findByUserId(USER)).thenReturn(Optional.of(account("100.00", "10000.00", "5000.00")));
+        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(new BigDecimal("500.00"));
+        when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = useCase().create(new Command(USER, TransactionType.WITHDRAWAL, new BigDecimal("500.00"),
+                "Saque", null, null));
+
+        assertThat(result.transaction().getStatus()).isEqualTo(TransactionStatus.APPROVED);
+        assertThat(result.balanceAfter()).isEqualByComparingTo("100.00"); // 100 + 500 − 500
     }
 }

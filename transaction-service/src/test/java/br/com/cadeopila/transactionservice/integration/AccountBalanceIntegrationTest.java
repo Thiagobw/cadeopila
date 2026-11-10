@@ -76,6 +76,13 @@ class AccountBalanceIntegrationTest {
         return Transaction.approved(data, Instant.now(), List.of(), Instant.now());
     }
 
+    /** Transferência de um terceiro para o usuário autenticado (ele é o destinatário). */
+    private Transaction incomingTransfer(String amount) {
+        var data = new NewTransaction(UUID.randomUUID(), TransactionType.TRANSFER, new BigDecimal(amount),
+                "Transferência recebida", null, USER);
+        return Transaction.approved(data, Instant.now(), List.of(), Instant.now());
+    }
+
     @Test
     @DisplayName("GET /accounts/balance devolve o saldo derivado (Mock + histórico) e o consumo do dia")
     void saldoDerivado() throws Exception {
@@ -89,6 +96,19 @@ class AccountBalanceIntegrationTest {
                 .andExpect(jsonPath("$.balance").value(1300.00))       // 1000 + 500 − 200
                 .andExpect(jsonPath("$.spentToday").value(200.00))     // só a saída aprovada do dia
                 .andExpect(jsonPath("$.availableToday").value(9800.00));
+    }
+
+    @Test
+    @DisplayName("GET /accounts/balance inclui as transferências recebidas (usuário é o destinatário)")
+    void saldoIncluiTransferenciasRecebidas() throws Exception {
+        when(accountPort.findByUserId(USER)).thenReturn(Optional.of(
+                new AccountSnapshot(USER, new BigDecimal("1000.00"), new BigDecimal("10000.00"), new BigDecimal("5000.00"))));
+        repository.save(approvedDeposit("500.00"));   // +500 (próprio)
+        repository.save(incomingTransfer("300.00"));  // +300 (recebida)
+
+        mockMvc.perform(get("/api/v1/accounts/balance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.balance").value(1800.00)); // 1000 + 500 + 300
     }
 
     @Test

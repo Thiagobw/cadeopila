@@ -35,6 +35,12 @@ public interface TransactionRepositoryPort {
     BigDecimal sumApprovedOutflowsOfDay(UUID userId, Instant dayStartInclusive, Instant dayEndExclusive);
 
     /**
+     * Soma das transferências APPROVED (não excluídas) <b>recebidas</b> pelo usuário (ele é o
+     * {@code destinationUserId}). Entra como crédito no saldo atual do destinatário. Nunca retorna {@code null}.
+     */
+    BigDecimal sumApprovedIncomingTransfers(UUID userId);
+
+    /**
      * Linhas cruas das transações APROVADAS e ativas (não excluídas) do usuário cujo {@code occurredAt}
      * está em [início, fim) — depósitos e saídas. O agrupamento por dia/mês acontece em memória no caso
      * de uso (no fuso da aplicação), nunca via {@code GROUP BY} de data no banco. Nunca retorna {@code null}.
