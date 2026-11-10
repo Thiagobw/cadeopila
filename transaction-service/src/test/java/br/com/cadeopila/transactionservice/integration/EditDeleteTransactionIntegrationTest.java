@@ -6,12 +6,17 @@ import br.com.cadeopila.transactionservice.core.domain.Transaction;
 import br.com.cadeopila.transactionservice.core.domain.TransactionCategory;
 import br.com.cadeopila.transactionservice.core.domain.TransactionType;
 import br.com.cadeopila.transactionservice.core.ports.out.TransactionRepositoryPort;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,12 +32,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Transactional
 class EditDeleteTransactionIntegrationTest {
 
     private static final UUID USER = UUID.randomUUID();
-    private static final UUID DESTINATION = UUID.randomUUID();
     private static final Instant TS = Instant.parse("2026-11-06T13:00:00Z");
 
     @Autowired
@@ -40,6 +44,18 @@ class EditDeleteTransactionIntegrationTest {
 
     @Autowired
     private TransactionRepositoryPort repository;
+
+    @BeforeEach
+    void authenticate() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     private Transaction approvedPurchase() {
         var data = new NewTransaction(USER, TransactionType.PURCHASE, new BigDecimal("150.00"), "Mercado",

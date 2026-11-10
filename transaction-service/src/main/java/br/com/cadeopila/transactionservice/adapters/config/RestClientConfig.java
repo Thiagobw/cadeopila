@@ -40,4 +40,14 @@ public class RestClientConfig {
                 .requestFactory(transactionHttpRequestFactory)
                 .build();
     }
+
+    @Bean
+    public RestClient userRestClient(RestClient.Builder builder,
+                                     ClientHttpRequestFactory transactionHttpRequestFactory,
+                                     AppProperties props) {
+        return builder
+                .baseUrl(props.user().baseUrl())
+                .requestFactory(transactionHttpRequestFactory)
+                .build();
+    }
 }

@@ -12,11 +12,15 @@ public interface UpdateTransactionMetadataUseCase {
 
     /**
      * Edição parcial de metadados: pelo menos um entre {@code description} e {@code category} deve vir.
+     * {@code userId} é o dono autenticado — usado para checar a propriedade da transação.
      */
-    record Command(UUID id, String description, TransactionCategory category) {
+    record Command(UUID id, UUID userId, String description, TransactionCategory category) {
         public Command {
             if (id == null) {
                 throw new InvalidTransactionException("id é obrigatório");
+            }
+            if (userId == null) {
+                throw new InvalidTransactionException("userId é obrigatório");
             }
             if ((description == null || description.isBlank()) && category == null) {
                 throw new InvalidTransactionException(

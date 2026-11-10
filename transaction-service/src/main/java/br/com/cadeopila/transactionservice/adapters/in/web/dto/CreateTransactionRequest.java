@@ -14,12 +14,9 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-@Schema(description = "Solicitação de criação de transação")
+@Schema(description = "Solicitação de criação de transação. O dono vem do usuário autenticado "
+        + "(Basic Auth), não do corpo.")
 public record CreateTransactionRequest(
-
-        @Schema(description = "Usuário dono da transação", example = "f47ac10b-58cc-4372-a567-0e02b2c3d479")
-        @NotNull(message = "userId é obrigatório")
-        UUID userId,
 
         @Schema(description = "Tipo da transação", example = "PURCHASE")
         @NotNull(message = "type é obrigatório")

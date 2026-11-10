@@ -19,9 +19,9 @@ public class TransactionWebMapper {
 
     private static final String EXCHANGE_UNAVAILABLE_MESSAGE = "Conversão indisponível no momento";
 
-    public CreateTransactionUseCase.Command toCommand(CreateTransactionRequest request) {
+    public CreateTransactionUseCase.Command toCommand(CreateTransactionRequest request, UUID userId) {
         return new CreateTransactionUseCase.Command(
-                request.userId(),
+                userId,
                 request.type(),
                 request.amount(),
                 request.description(),
@@ -43,8 +43,9 @@ public class TransactionWebMapper {
                 new AccountResponse(result.balanceAfter()));
     }
 
-    public UpdateTransactionMetadataUseCase.Command toCommand(UUID id, UpdateTransactionMetadataRequest request) {
-        return new UpdateTransactionMetadataUseCase.Command(id, request.description(), request.category());
+    public UpdateTransactionMetadataUseCase.Command toCommand(UUID id, UUID userId,
+                                                              UpdateTransactionMetadataRequest request) {
+        return new UpdateTransactionMetadataUseCase.Command(id, userId, request.description(), request.category());
     }
 
     public TransactionResponse toResponse(Transaction transaction) {

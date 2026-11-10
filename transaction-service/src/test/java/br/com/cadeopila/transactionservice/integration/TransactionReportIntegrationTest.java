@@ -4,6 +4,7 @@ import br.com.cadeopila.transactionservice.core.domain.AccountSnapshot;
 import br.com.cadeopila.transactionservice.core.domain.ExchangeRate;
 import br.com.cadeopila.transactionservice.core.ports.out.AccountPort;
 import br.com.cadeopila.transactionservice.core.ports.out.ExchangeRatePort;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Transactional
 class TransactionReportIntegrationTest {
 
@@ -51,11 +55,19 @@ class TransactionReportIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
         when(accountPort.findByUserId(USER)).thenReturn(Optional.of(
                 new AccountSnapshot(USER, new BigDecimal("100000.00"),
                         new BigDecimal("1000000.00"), new BigDecimal("5000.00"))));
         when(exchangeRatePort.quoteAll(any())).thenReturn(List.of(
                 new ExchangeRate("USD", new BigDecimal("5.00"), "BrasilAPI", Instant.parse("2026-11-06T18:00:00Z"))));
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
     }
 
     private void postCreated(String body) throws Exception {
@@ -67,16 +79,16 @@ class TransactionReportIntegrationTest {
     @DisplayName("Fim a fim (CSV): baixa o relatório com BOM, cabeçalho pt-BR, acentos, escaping e linhas APROVADA/REJEITADA")
     void relatorioCsvPontaAPonta() throws Exception {
         // Aprovada com descrição "difícil" (contém ';' e aspas) e acento.
-        postCreated("{\"userId\":\"" + USER + "\",\"type\":\"PURCHASE\",\"amount\":150.00,"
+        postCreated("{\"type\":\"PURCHASE\",\"amount\":150.00,"
                 + "\"description\":\"Compra; \\\"caça\\\"\",\"category\":\"SHOPPING\"}");
         // Rejeitada: saque acima do limite por transação (5000) → fica gravada com o motivo.
         mockMvc.perform(post("/api/v1/transactions").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + USER + "\",\"type\":\"WITHDRAWAL\",\"amount\":10000.00,"
+                        .content("{\"type\":\"WITHDRAWAL\",\"amount\":10000.00,"
                                 + "\"description\":\"Saque alto\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("REJECTED"));
 
-        var result = mockMvc.perform(get("/api/v1/transactions/report").param("userId", USER.toString()))
+        var result = mockMvc.perform(get("/api/v1/transactions/report"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"relatorio.csv\""))
                 .andReturn();
@@ -95,12 +107,10 @@ class TransactionReportIntegrationTest {
     @Test
     @DisplayName("Fim a fim (Excel): format=xlsx devolve um .xlsx nativo (assinatura PK) para download")
     void relatorioExcelPontaAPonta() throws Exception {
-        postCreated("{\"userId\":\"" + USER + "\",\"type\":\"DEPOSIT\",\"amount\":500.00,"
+        postCreated("{\"type\":\"DEPOSIT\",\"amount\":500.00,"
                 + "\"description\":\"Salário\"}");
 
-        var result = mockMvc.perform(get("/api/v1/transactions/report")
-                        .param("userId", USER.toString())
-                        .param("format", "xlsx"))
+        var result = mockMvc.perform(get("/api/v1/transactions/report").param("format", "xlsx"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"relatorio.xlsx\""))
                 .andReturn();
@@ -112,12 +122,10 @@ class TransactionReportIntegrationTest {
     @Test
     @DisplayName("Fim a fim (PDF): format=pdf devolve um PDF (assinatura %PDF) para download")
     void relatorioPdfPontaAPonta() throws Exception {
-        postCreated("{\"userId\":\"" + USER + "\",\"type\":\"DEPOSIT\",\"amount\":500.00,"
+        postCreated("{\"type\":\"DEPOSIT\",\"amount\":500.00,"
                 + "\"description\":\"Salário\"}");
 
-        var result = mockMvc.perform(get("/api/v1/transactions/report")
-                        .param("userId", USER.toString())
-                        .param("format", "pdf"))
+        var result = mockMvc.perform(get("/api/v1/transactions/report").param("format", "pdf"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"relatorio.pdf\""))
                 .andReturn();
@@ -132,7 +140,7 @@ class TransactionReportIntegrationTest {
     @DisplayName("A rota literal /report resolve para o relatório (não cai no handler de /{id})")
     void reportNaoColideComFindById() throws Exception {
         // Se caísse em GET /{id}, "report" não é UUID → 400. 200 com CSV prova o roteamento correto.
-        mockMvc.perform(get("/api/v1/transactions/report").param("userId", USER.toString()))
+        mockMvc.perform(get("/api/v1/transactions/report"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"relatorio.csv\""));
     }

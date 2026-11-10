@@ -8,11 +8,16 @@ import br.com.cadeopila.transactionservice.core.domain.TransactionCategory;
 import br.com.cadeopila.transactionservice.core.domain.TransactionStatus;
 import br.com.cadeopila.transactionservice.core.domain.TransactionType;
 import br.com.cadeopila.transactionservice.core.ports.out.TransactionRepositoryPort;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,8 +30,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Consultas por usuário. O usuário autenticado (principal) é {@code USER_A}: as rotas derivam o dono
+ * do contexto de segurança, não mais de um parâmetro. Filtros desligados no MockMvc
+ * ({@code addFilters = false}); o Basic Auth real é coberto por {@code SecurityIntegrationTest}.
+ */
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @Transactional
 class QueryTransactionsIntegrationTest {
 
@@ -44,6 +54,18 @@ class QueryTransactionsIntegrationTest {
 
     @Autowired
     private TransactionRepositoryPort repository;
+
+    @BeforeEach
+    void authenticate() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+                USER_A, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     @DisplayName("GET /{id} deve retornar 200 com os campos e o bloco de câmbio")
@@ -78,6 +100,15 @@ class QueryTransactionsIntegrationTest {
     }
 
     @Test
+    @DisplayName("GET /{id} de transação de outro usuário deve retornar 404 (não vaza existência)")
+    void getByIdDeOutroUsuarioDeveRetornar404() throws Exception {
+        var saved = repository.save(approvedDeposit(USER_B, "500.00", IN_WINDOW));
+
+        mockMvc.perform(get("/api/v1/transactions/{id}", saved.getId()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     @DisplayName("GET lista deve trazer só as ativas do usuário, excluindo apagadas e de outros")
     void listaFiltraUsuarioEExcluiApagadas() throws Exception {
         repository.save(approvedDeposit(USER_A, "100.00", IN_WINDOW));
@@ -85,7 +116,7 @@ class QueryTransactionsIntegrationTest {
         repository.save(deletedTransfer(USER_A, "20.00", IN_WINDOW));
         repository.save(approvedDeposit(USER_B, "500.00", IN_WINDOW));
 
-        mockMvc.perform(get("/api/v1/transactions").param("userId", USER_A.toString()))
+        mockMvc.perform(get("/api/v1/transactions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(2));
     }
@@ -96,9 +127,7 @@ class QueryTransactionsIntegrationTest {
         repository.save(approvedDeposit(USER_A, "100.00", IN_WINDOW));
         repository.save(rejectedWithdrawal(USER_A, "30.00", IN_WINDOW));
 
-        mockMvc.perform(get("/api/v1/transactions")
-                        .param("userId", USER_A.toString())
-                        .param("status", "REJECTED"))
+        mockMvc.perform(get("/api/v1/transactions").param("status", "REJECTED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].status").value("REJECTED"));
@@ -112,7 +141,6 @@ class QueryTransactionsIntegrationTest {
         repository.save(approvedDeposit(USER_A, "30.00", AFTER_WINDOW));
 
         mockMvc.perform(get("/api/v1/transactions")
-                        .param("userId", USER_A.toString())
                         .param("from", "2026-11-06")
                         .param("to", "2026-11-06"))
                 .andExpect(status().isOk())
@@ -126,9 +154,7 @@ class QueryTransactionsIntegrationTest {
         repository.save(approvedDeposit(USER_A, "10.00", BEFORE_WINDOW));
         repository.save(approvedDeposit(USER_A, "20.00", IN_WINDOW));
 
-        mockMvc.perform(get("/api/v1/transactions")
-                        .param("userId", USER_A.toString())
-                        .param("size", "1"))
+        mockMvc.perform(get("/api/v1/transactions").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(1))
                 .andExpect(jsonPath("$.totalElements").value(2))

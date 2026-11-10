@@ -28,6 +28,8 @@ public record AppProperties(
 
         @Valid @NotNull Account account,
 
+        @Valid @NotNull User user,
+
         @Valid @NotNull Http http
 ) {
 
@@ -52,6 +54,16 @@ public record AppProperties(
             String baseUrl
     ) {
         public Account {
+            baseUrl = stripTrailingSlash(baseUrl);
+        }
+    }
+
+    public record User(
+
+            @NotBlank(message = "A URL base do user-service (USER_API_BASE_URL) é obrigatória")
+            String baseUrl
+    ) {
+        public User {
             baseUrl = stripTrailingSlash(baseUrl);
         }
     }

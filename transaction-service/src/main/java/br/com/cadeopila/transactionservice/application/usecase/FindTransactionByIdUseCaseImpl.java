@@ -20,8 +20,10 @@ public class FindTransactionByIdUseCaseImpl implements FindTransactionByIdUseCas
 
     @Override
     @Transactional(readOnly = true)
-    public Transaction findById(UUID id) {
+    public Transaction findById(UUID id, UUID userId) {
+        // Não-dono é tratado como inexistente (404): não revela a existência de transações alheias.
         return transactionRepository.findActiveById(id)
+                .filter(transaction -> transaction.getUserId().equals(userId))
                 .orElseThrow(() -> new TransactionNotFoundException(id));
     }
 }

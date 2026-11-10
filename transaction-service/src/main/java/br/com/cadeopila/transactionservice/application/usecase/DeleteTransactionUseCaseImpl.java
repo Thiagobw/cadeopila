@@ -22,8 +22,10 @@ public class DeleteTransactionUseCaseImpl implements DeleteTransactionUseCase {
 
     @Override
     @Transactional
-    public void delete(UUID id) {
+    public void delete(UUID id, UUID userId) {
+        // Não-dono é tratado como inexistente (404): não revela a existência de transações alheias.
         var transaction = transactionRepository.findActiveById(id)
+                .filter(found -> found.getUserId().equals(userId))
                 .orElseThrow(() -> new TransactionNotFoundException(id));
         transactionRepository.save(transaction.markAsDeleted(clock.instant()));
     }

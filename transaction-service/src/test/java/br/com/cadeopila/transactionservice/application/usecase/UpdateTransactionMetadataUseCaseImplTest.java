@@ -31,6 +31,8 @@ import static org.mockito.Mockito.when;
 class UpdateTransactionMetadataUseCaseImplTest {
 
     private static final Instant NOW = Instant.parse("2026-11-06T18:00:00Z");
+    private static final UUID OWNER = UUID.fromString("f47ac10b-58cc-4372-a567-0e02b2c3d479");
+    private static final UUID OTHER = UUID.fromString("9f1c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8");
 
     @Mock
     private TransactionRepositoryPort transactionRepository;
@@ -40,19 +42,19 @@ class UpdateTransactionMetadataUseCaseImplTest {
     }
 
     private Transaction purchase(UUID id) {
-        return Transaction.rehydrate(id, UUID.randomUUID(), null, TransactionType.PURCHASE, new BigDecimal("150.00"),
+        return Transaction.rehydrate(id, OWNER, null, TransactionType.PURCHASE, new BigDecimal("150.00"),
                 "Mercado", TransactionCategory.FOOD, TransactionStatus.APPROVED, null,
                 NOW, List.of(), NOW, NOW, null, 0L);
     }
 
     @Test
-    @DisplayName("Deve atualizar os metadados da transação ativa")
+    @DisplayName("Deve atualizar os metadados da transação ativa do próprio usuário")
     void deveAtualizarMetadados() {
         var id = UUID.randomUUID();
         when(transactionRepository.findActiveById(id)).thenReturn(Optional.of(purchase(id)));
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        var result = useCase().update(new Command(id, "Mercado corrigido", TransactionCategory.SHOPPING));
+        var result = useCase().update(new Command(id, OWNER, "Mercado corrigido", TransactionCategory.SHOPPING));
 
         assertThat(result.getDescription()).isEqualTo("Mercado corrigido");
         assertThat(result.getCategory()).isEqualTo(TransactionCategory.SHOPPING);
@@ -65,7 +67,17 @@ class UpdateTransactionMetadataUseCaseImplTest {
         var id = UUID.randomUUID();
         when(transactionRepository.findActiveById(id)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> useCase().update(new Command(id, "x", null)))
+        assertThatThrownBy(() -> useCase().update(new Command(id, OWNER, "x", null)))
+                .isInstanceOf(TransactionNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("Deve lançar 404 quando a transação pertence a outro usuário")
+    void deveLancar404QuandoNaoDono() {
+        var id = UUID.randomUUID();
+        when(transactionRepository.findActiveById(id)).thenReturn(Optional.of(purchase(id)));
+
+        assertThatThrownBy(() -> useCase().update(new Command(id, OTHER, "x", null)))
                 .isInstanceOf(TransactionNotFoundException.class);
     }
 
@@ -74,7 +86,16 @@ class UpdateTransactionMetadataUseCaseImplTest {
     void commandDeveExigirAoMenosUmCampo() {
         var id = UUID.randomUUID();
 
-        assertThatThrownBy(() -> new Command(id, null, null))
+        assertThatThrownBy(() -> new Command(id, OWNER, null, null))
+                .isInstanceOf(InvalidTransactionException.class);
+    }
+
+    @Test
+    @DisplayName("Command deve exigir o userId (dono autenticado)")
+    void commandDeveExigirUserId() {
+        var id = UUID.randomUUID();
+
+        assertThatThrownBy(() -> new Command(id, null, "x", null))
                 .isInstanceOf(InvalidTransactionException.class);
     }
 }
