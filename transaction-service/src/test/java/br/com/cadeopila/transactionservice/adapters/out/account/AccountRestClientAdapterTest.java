@@ -4,6 +4,8 @@ import br.com.cadeopila.transactionservice.core.exception.AccountUnavailableExce
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -103,6 +105,22 @@ class AccountRestClientAdapterTest {
                         [{"id":"1","userId":"%s","balance":1.00,"dailyLimit":1.00,"transactionLimit":1.00},
                          {"id":"2","userId":"%s","balance":2.00,"dailyLimit":2.00,"transactionLimit":2.00}]
                         """.formatted(USER_ID, USER_ID), MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> adapter.findByUserId(USER_ID))
+                .isInstanceOf(AccountUnavailableException.class);
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"id\":\"1\",\"userId\":\"%s\",\"balance\":null,\"dailyLimit\":1000.00,\"transactionLimit\":500.00}",
+            "{\"id\":\"1\",\"userId\":\"%s\",\"balance\":1500.00,\"dailyLimit\":null,\"transactionLimit\":500.00}",
+            "{\"id\":\"1\",\"userId\":\"%s\",\"balance\":1500.00,\"dailyLimit\":1000.00,\"transactionLimit\":null}"
+    })
+    @DisplayName("findByUserId deve lançar indisponibilidade quando a MockAPI omite um campo obrigatório (null)")
+    void findByUserIdDeveLancarComCampoObrigatorioNulo(String accountJson) {
+        server.expect(requestTo(BASE_URL + "/accounts?userId=" + USER_ID))
+                .andRespond(withSuccess("[" + accountJson.formatted(USER_ID) + "]", MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> adapter.findByUserId(USER_ID))
                 .isInstanceOf(AccountUnavailableException.class);
