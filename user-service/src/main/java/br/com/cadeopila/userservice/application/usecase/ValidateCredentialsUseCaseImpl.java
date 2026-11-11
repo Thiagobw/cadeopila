@@ -27,8 +27,16 @@ public class ValidateCredentialsUseCaseImpl implements ValidateCredentialsUseCas
         // Mesma normalização usada na criação (trim + lower): o e-mail é gravado normalizado.
         var normalizedEmail = Email.normalize(command.email());
 
-        var user = userRepository.findByEmail(normalizedEmail)
-                .orElseThrow(InvalidCredentialsException::new);
+        var user = userRepository.findByEmail(normalizedEmail).orElse(null);
+        if (user == null) {
+            // Defesa contra timing attack: roda o BCrypt (hashing da senha recebida, resultado
+            // descartado) mesmo sem usuário, gastando o mesmo tempo de uma verificação real antes de
+            // recusar. Assim o e-mail inexistente não responde mais rápido e não denuncia, por timing,
+            // quais e-mails estão cadastrados. O trabalho é gerado em runtime, no mesmo custo do encoder,
+            // sem nenhum hash fixo embutido no código (não há "secret" a expor — evita o SAST S8215).
+            passwordEncoder.encode(command.rawPassword());
+            throw new InvalidCredentialsException();
+        }
 
         // A senha nunca deixa o MS1: comparamos o texto puro com o hash BCrypt já gravado.
         if (!passwordEncoder.matches(command.rawPassword(), user.getPasswordHash())) {
