@@ -1,5 +1,6 @@
 package br.com.cadeopila.userservice.adapters.in.web.handler;
 
+import br.com.cadeopila.userservice.core.exception.InvalidCredentialsException;
 import br.com.cadeopila.userservice.core.exception.InvalidPaginationException;
 import br.com.cadeopila.userservice.core.exception.UserAlreadyExistsException;
 import br.com.cadeopila.userservice.core.exception.UserNotFoundException;
@@ -97,6 +98,14 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleInvalidPagination(InvalidPaginationException ex) {
         var problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         problem.setTitle("Dados inválidos");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException ex) {
+        var problem = ProblemDetail.forStatus(HttpStatus.UNAUTHORIZED);
+        problem.setTitle("Não autenticado");
         problem.setDetail(ex.getMessage());
         return problem;
     }
