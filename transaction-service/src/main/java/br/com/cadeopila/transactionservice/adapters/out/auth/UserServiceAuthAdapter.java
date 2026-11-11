@@ -20,9 +20,9 @@ import java.util.UUID;
 /**
  * Adapter da {@link UserAuthenticationPort} sobre o endpoint de validação do user-service (MS1):
  * {@code POST /api/v1/auth/validate}. Autentica-se nessa chamada M2M com o header {@code X-Internal-Key}
- * ({@code INTERNAL_API_KEY}). 200 → userId; 401 → credenciais inválidas ({@code Optional.empty()});
- * falha técnica (timeout/5xx) → {@link AuthenticationUnavailableException}. A senha só trafega nesta
- * chamada e nunca é registrada em log.
+ * ({@code INTERNAL_API_KEY}). 200 → userId; qualquer 4xx (401 senha errada, 400 e-mail malformado, 403
+ * etc.) → credenciais inválidas ({@code Optional.empty()}); falha técnica (timeout/5xx) →
+ * {@link AuthenticationUnavailableException}. A senha só trafega nesta chamada e nunca é registrada em log.
  */
 @Component
 public class UserServiceAuthAdapter implements UserAuthenticationPort {
@@ -53,9 +53,14 @@ public class UserServiceAuthAdapter implements UserAuthenticationPort {
                 return Optional.empty();
             }
             return Optional.of(response.userId());
-        } catch (HttpClientErrorException.Unauthorized unauthorized) {
+        } catch (HttpClientErrorException clientError) {
+            // Qualquer 4xx do MS1 (401 senha errada, 400 e-mail malformado, 403 etc.) significa que a
+            // autenticação não prossegue: tratamos como credenciais inválidas → o MS2 responde 401 ao
+            // cliente final. 4xx é "requisição recusada/malformada", nunca "serviço fora do ar" (503).
             return Optional.empty();
         } catch (RestClientException ex) {
+            // Só falhas técnicas chegam aqui: timeout, conexão recusada, 5xx (HttpServerErrorException),
+            // corpo ilegível. Essas sim viram indisponibilidade (503).
             log.warn("Falha ao validar credenciais no user-service (erro={})", ex.getClass().getSimpleName());
             throw new AuthenticationUnavailableException("Falha ao validar credenciais no user-service");
         }

@@ -62,6 +62,26 @@ class UserServiceAuthAdapterTest {
     }
 
     @Test
+    @DisplayName("Deve retornar vazio quando o MS1 responde 400 (e-mail malformado) — e NÃO 503")
+    void deveRetornarVazioEm400() {
+        server.expect(requestTo(VALIDATE_URL))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+        assertThat(adapter.authenticate("email-invalido", "senha123")).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("Deve retornar vazio para qualquer outro 4xx do MS1 (ex.: 403)")
+    void deveRetornarVazioEmOutros4xx() {
+        server.expect(requestTo(VALIDATE_URL))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN));
+
+        assertThat(adapter.authenticate("maria@email.com", "senha123")).isEmpty();
+        server.verify();
+    }
+
+    @Test
     @DisplayName("Deve lançar indisponibilidade quando o MS1 responde 500")
     void deveLancarIndisponibilidadeEm500() {
         server.expect(requestTo(VALIDATE_URL))
