@@ -19,7 +19,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,15 +63,16 @@ class ValidateCredentialsUseCaseImplTest {
     }
 
     @Test
-    @DisplayName("Deve lançar InvalidCredentials quando o e-mail não existe (sem checar a senha)")
-    void deveLancarQuandoEmailNaoExiste() {
+    @DisplayName("E-mail inexistente deve rodar o BCrypt (hash dummy) e lançar InvalidCredentials — timing attack")
+    void deveRodarBcryptDummyELancarQuandoEmailNaoExiste() {
         when(userRepository.findByEmail("fantasma@email.com")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> useCase.validate(
                 new ValidateCredentialsUseCase.Command("fantasma@email.com", "senha123")))
                 .isInstanceOf(InvalidCredentialsException.class);
 
-        verify(passwordEncoder, never()).matches(anyString(), anyString());
+        // O BCrypt roda uma vez mesmo sem usuário (contra o hash fixo), equalizando o tempo de resposta.
+        verify(passwordEncoder).matches(eq("senha123"), anyString());
     }
 
     @Test
