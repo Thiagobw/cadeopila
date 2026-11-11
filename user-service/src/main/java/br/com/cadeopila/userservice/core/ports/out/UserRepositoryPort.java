@@ -12,9 +12,6 @@ public interface UserRepositoryPort {
 
     Optional<User> findById(UUID id);
 
-    /** Busca por e-mail já normalizado (trim + lower). Usada na validação de credenciais. */
-    Optional<User> findByEmail(String email);
-
     boolean existsById(UUID id);
 
     boolean existsByEmail(String email);
