@@ -45,16 +45,18 @@ criaria **duas fontes do mesmo dado**, uma delas fadada a ficar desatualizada. E
 real** usando a MockAPI como ponto de partida:
 
 - **Saldo atual** = saldo inicial da Mock **+** histórico de transações **aprovadas** do MS2
-  (depósitos somam, saídas — saque/transferência/compra — subtraem), ignorando as excluídas.
+  (depósitos somam, saídas — saque/transferência/compra — subtraem) **+ transferências recebidas**
+  (quando o usuário é o **destinatário**), ignorando as excluídas.
 - **Limite diário** = soma das **saídas aprovadas do dia** (dia no fuso `app.time-zone`, padrão `America/Sao_Paulo`).
 - A política de aprovação (`TransactionPolicy`) usa esse saldo atual derivado, nunca o saldo bruto da Mock.
 - `account.balanceAfter` na resposta do POST é **derivado** (saldo atual ± valor); não é persistido.
-- A rota `GET /api/v1/accounts/balance?userId=...` expõe esse saldo derivado com `dailyLimit`/`transactionLimit`
+- A rota `GET /api/v1/accounts/balance` (usuário via **Basic Auth**) expõe esse saldo derivado com `dailyLimit`/`transactionLimit`
   (da Mock) e `spentToday`/`availableToday`; conta inexistente → **404**, Mock fora do ar → **503** (sem a URL na mensagem).
 
 ## Resiliência da integração
 
-- O cliente HTTP da Mock tem **timeout de conexão (2s) e de leitura (3s)** — a requisição nunca fica travada.
+- O cliente HTTP da Mock tem **timeout de conexão (2s) e de leitura (3s)** — a requisição nunca fica travada
+  (comprovado por `AccountRestClientReadTimeoutTest`: uma resposta artificialmente lenta de **4s** é abortada bem antes).
 - **Mock fora do ar** (timeout, erro de rede, 5xx) → a transação é gravada como **`REJECTED`** com motivo
   `ACCOUNT_SERVICE_UNAVAILABLE` e a API responde **201** (dois estados apenas e registro auditável).
 - **Conta inexistente** → `REJECTED` com `ACCOUNT_NOT_FOUND`.
@@ -68,16 +70,19 @@ real** usando a MockAPI como ponto de partida:
 
 ## Endpoints
 
+Todas as rotas exigem **Basic Auth** (`Authorization: Basic <base64(email:senha)>`, validado no MS1): o usuário é o
+**autenticado**, então **nenhuma rota recebe `userId` por query string**. Ex.: `curl -u email:senha http://localhost:8082/api/v1/accounts/balance`.
+
 | Método | Rota | Descrição |
 |---|---|---|
 | POST | `/api/v1/transactions` | Cria a transação (201 em APPROVED **e** REJECTED, com `Location`) |
 | GET | `/api/v1/transactions/{id}` | Consulta por id, com bloco `exchange` (USD/EUR) — 404 se inexistente/excluída |
-| GET | `/api/v1/transactions?userId=...` | Lista paginada; filtros `type`, `status`, `from`, `to` (datas inclusivas) |
+| GET | `/api/v1/transactions` | Lista paginada do usuário autenticado; filtros `type`, `status`, `from`, `to` (datas inclusivas) |
 | PATCH | `/api/v1/transactions/{id}` | Edita metadados (`description`, `category`); valor/tipo/status imutáveis |
 | DELETE | `/api/v1/transactions/{id}` | Exclusão **lógica** (apenas REJECTED; preserva o histórico) — 422 se APPROVED |
-| GET | `/api/v1/accounts/balance?userId=...` | Saldo atual derivado + limites + consumo do dia |
-| GET | `/api/v1/analytics/expenses/summary?userId=...&month=MM-YYYY` | Análise de despesas do mês (padrão = mês atual): visão geral, raio-X por grau de necessidade, onde cortar (top 5), custo fixo, total por dia e alerta do "buraco negro" |
-| GET | `/api/v1/transactions/report?userId=...&from=&to=&format=csv\|xlsx\|pdf` | **Relatório** das transações do período (padrão = mês atual) para **download** — CSV (UTF-8 com BOM, `;`), Excel `.xlsx` nativo ou PDF |
+| GET | `/api/v1/accounts/balance` | Saldo atual derivado + limites + consumo do dia |
+| GET | `/api/v1/analytics/expenses/summary?month=MM-YYYY` | Análise de despesas do mês (padrão = mês atual): visão geral, raio-X por grau de necessidade, onde cortar (top 5), custo fixo, total por dia e alerta do "buraco negro" |
+| GET | `/api/v1/transactions/report?from=&to=&format=csv\|xlsx\|pdf` | **Relatório** das transações do período (padrão = mês atual) para **download** — CSV (UTF-8 com BOM, `;`), Excel `.xlsx` nativo ou PDF |
 
 > "Corrigir sem apagar" (critério do PO): a correção é feita por **nova transação** ou por edição de metadados;
 > a "remoção" é **soft delete** (`deleted_at`), restrita a transações rejeitadas, preservando o histórico.
@@ -103,8 +108,7 @@ arquivo mora na camada de adapters** (`TransactionCsvWriter`/`TransactionExcelWr
 core/application só lidam com `ReportRow` tipado e não conhecem CSV, BOM, Apache POI nem OpenPDF (ArchUnit verde).
 Detalhes de decisão em [`docs/PEDIDO-7-RELATORIO.md`](docs/PEDIDO-7-RELATORIO.md).
 
-> **Autenticação (Pedido 6) ainda não aplicada:** enquanto não há "usuário do contexto", o relatório recebe o
-> `userId` por parâmetro; quando o auth entrar, passa a usar a identidade autenticada.
+> **Autenticação:** o relatório é sempre do **usuário autenticado** (Basic Auth); não há `userId` por parâmetro.
 
 ## Variáveis de ambiente
 
@@ -122,6 +126,8 @@ Configuração do MockAPI (recurso `accounts`, um por usuário): campos `userId`
 
 - **Sem transação distribuída** entre a Mock e o banco. Como a Mock é somente leitura, não há escrita externa a
   compensar; uma falha de persistência apenas resulta em 500, sem efeito colateral na Mock.
-- **Leitura concorrente do saldo**: duas transações simultâneas do mesmo usuário podem derivar o **mesmo saldo**
-  (antes de qualquer uma persistir) e ambas serem aprovadas, ultrapassando o saldo/limite. Não há trava nesta entrega.
-- **Autenticação** (Pedido 6) ainda não aplicada: enquanto isso, o usuário é informado em `userId`.
+- **Leitura concorrente do saldo (sem trava — limitação aceita, D4):** o saldo é **derivado por leitura** e só então
+  a transação é persistida, **sem lock pessimista nem checagem atômica**. Duas saídas **simultâneas** do mesmo usuário
+  podem ler o **mesmo saldo** (antes de qualquer uma gravar) e ambas serem aprovadas, ultrapassando saldo/limite
+  (condição de corrida _read-then-write_). É **conhecida e aceita** nesta entrega; mitigá-la exigiria trava
+  otimista/pessimista ou serialização por usuário, fora do escopo atual.
