@@ -279,22 +279,22 @@ class CreateTransactionUseCaseImplTest {
     }
 
     @Test
-    @DisplayName("Limites nulos da MockAPI não causam 500: a transação é avaliada só pelo saldo")
-    void limitesNulosDaMockNaoQuebram() {
+    @DisplayName("Limites nulos da MockAPI não liberam a saída: o adapter rejeita a montante → REJECTED/ACCOUNT_SERVICE_UNAVAILABLE (D2/D3)")
+    void limitesNulosDaMockNaoLiberamTransacao() {
         when(exchangeRatePort.quoteAll(QUOTE_DATE)).thenReturn(List.of(usdRate()));
-        // dailyLimit e transactionLimit nulos (a MockAPI pode omiti-los).
-        when(accountPort.findByUserId(USER)).thenReturn(Optional.of(
-                new AccountSnapshot(USER, new BigDecimal("1000.00"), null, null)));
-        when(transactionRepository.sumApprovedSignedAmount(USER)).thenReturn(BigDecimal.ZERO);
-        when(transactionRepository.sumApprovedIncomingTransfers(USER)).thenReturn(BigDecimal.ZERO);
-        when(transactionRepository.sumApprovedOutflowsOfDay(any(), any(), any())).thenReturn(BigDecimal.ZERO);
+        // A partir do fix de resiliência, o AccountRestClientAdapter.toSnapshot valida os campos
+        // obrigatórios (balance/dailyLimit/transactionLimit): se a MockAPI os devolve nulos, lança
+        // AccountUnavailableException — a conta nunca chega ao caso de uso com limite nulo. Antes,
+        // limite nulo liberava saídas ilimitadas (D3); agora a transação é REJECTED com motivo.
+        when(accountPort.findByUserId(USER)).thenThrow(new AccountUnavailableException("Dados da conta inválidos"));
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result = useCase().create(new Command(USER, TransactionType.WITHDRAWAL, new BigDecimal("500.00"),
                 "Saque", null, null));
 
-        // Só o saldo (1000) decide — nenhum NPE por limite nulo.
-        assertThat(result.transaction().getStatus()).isEqualTo(TransactionStatus.APPROVED);
-        assertThat(result.balanceAfter()).isEqualByComparingTo("500.00");
+        var saved = captureSaved();
+        assertThat(saved.getStatus()).isEqualTo(TransactionStatus.REJECTED);
+        assertThat(saved.getRejectionReason()).isEqualTo(RejectionReason.ACCOUNT_SERVICE_UNAVAILABLE);
+        assertThat(result.balanceAfter()).isNull();
     }
 }
