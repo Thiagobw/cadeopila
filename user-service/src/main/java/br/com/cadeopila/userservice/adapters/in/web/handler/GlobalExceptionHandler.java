@@ -1,5 +1,6 @@
 package br.com.cadeopila.userservice.adapters.in.web.handler;
 
+import br.com.cadeopila.userservice.adapters.in.web.CsvImportException;
 import br.com.cadeopila.userservice.core.exception.InvalidCredentialsException;
 import br.com.cadeopila.userservice.core.exception.InvalidPaginationException;
 import br.com.cadeopila.userservice.core.exception.UserAlreadyExistsException;
@@ -98,6 +99,14 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleInvalidPagination(InvalidPaginationException ex) {
         var problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         problem.setTitle("Dados inválidos");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    @ExceptionHandler(CsvImportException.class)
+    public ProblemDetail handleCsvImport(CsvImportException ex) {
+        var problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("CSV inválido");
         problem.setDetail(ex.getMessage());
         return problem;
     }
