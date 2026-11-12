@@ -27,19 +27,46 @@ core/            domínio puro (JDK only): User, Email (VO), CpfMasker, PageQuer
 application/     casos de uso: criar, buscar por id, listar (paginado), atualizar e excluir usuário
 adapters/
   in/web/        controllers REST, DTOs (Bean Validation), mappers, GlobalExceptionHandler (ProblemDetail)
+  in/web/security/ Basic Auth (SecurityConfig, CustomUserDetailsService) + gate M2M (InternalApiKeyFilter)
   out/persistence/ entidade JPA, repositório Spring Data, mapper
   out/security/  BcryptPasswordEncoderAdapter (hash de senha)
 ```
 
 ## Endpoints
 
-| Método | Rota | Descrição |
-|---|---|---|
-| POST | `/api/v1/users` | Cria usuário (201 com `Location`); e-mail/CPF duplicado → **409** (CPF **mascarado**) |
-| GET | `/api/v1/users` | Lista paginada (`page` ≥ 0, `size` entre 1 e 100) |
-| GET | `/api/v1/users/{id}` | Busca por id — 404 se inexistente |
-| PUT | `/api/v1/users/{id}` | Substituição completa; senha opcional (mantém a atual se omitida) |
-| DELETE | `/api/v1/users/{id}` | Remove o usuário (204) |
+| Método | Rota | Auth | Descrição |
+|---|---|---|---|
+| POST | `/api/v1/users` | 🔓 pública | Cria usuário (201 com `Location`); e-mail/CPF duplicado → **409** (CPF **mascarado**) |
+| GET | `/api/v1/users` | 🔒 Basic | Lista paginada (`page` ≥ 0, `size` entre 1 e 100) |
+| GET | `/api/v1/users/{id}` | 🔒 Basic | Busca por id — 404 se inexistente |
+| PUT | `/api/v1/users/{id}` | 🔒 Basic | Substituição completa; senha opcional (mantém a atual se omitida) |
+| DELETE | `/api/v1/users/{id}` | 🔒 Basic | Remove o usuário (204) |
+
+## Segurança (Basic Auth)
+
+O CRUD de usuários é protegido por **HTTP Basic Auth** (Spring Security). A estratégia de credenciais é a
+**mesma** de `POST /api/v1/auth/validate`: o usuário se autentica com o **próprio e-mail + senha**, validados
+contra o banco (hash **BCrypt**) pelo `CustomUserDetailsService`. Não há usuário/senha fixos no código.
+
+- **Rotas públicas:** `POST /api/v1/users` (cadastro — aberto para novos usuários se registrarem), Swagger
+  (`/swagger-ui/**`, `/v3/api-docs/**`) e `/actuator/health`.
+- **Rotas protegidas:** todo o restante de `/api/v1/users/**` (listar, buscar, atualizar, excluir) → **401**
+  (`application/problem+json`) sem credenciais válidas.
+- **Rota interna M2M** `/api/v1/auth/validate`: continua protegida pelo `InternalApiKeyFilter` (header
+  `X-Internal-Key`), que roda **antes** do Spring Security — a configuração de segurança não interfere nele.
+
+```bash
+# 1) Cria um usuário (público) — guarde o e-mail e a senha usados
+curl -s -X POST http://localhost:8081/api/v1/users \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Ana Souza","email":"ana.souza@email.com","cpf":"11122233344","password":"Senha@Teste123"}'
+
+# 2) Lista usuários usando Basic Auth com essas credenciais
+curl -s -u 'ana.souza@email.com:Senha@Teste123' http://localhost:8081/api/v1/users
+
+# Sem credenciais → 401
+curl -i http://localhost:8081/api/v1/users
+```
 
 ## Regras de validação de entrada
 
