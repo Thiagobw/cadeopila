@@ -5,6 +5,7 @@ import br.com.cadeopila.transactionservice.core.ports.in.GetAccountBalanceUseCas
 import br.com.cadeopila.transactionservice.core.ports.out.AccountPort;
 import br.com.cadeopila.transactionservice.core.ports.out.TransactionRepositoryPort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -30,11 +31,8 @@ public class GetAccountBalanceUseCaseImpl implements GetAccountBalanceUseCase {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Balance get(UUID userId) {
-        // Sem @Transactional: a primeira coisa do método é a chamada HTTP à API de contas; abrir uma
-        // transação aqui seguraria uma conexão do pool durante toda a chamada externa (D7). As leituras
-        // seguintes do repositório abrem (cada uma) sua própria transação curta — a conexão só é tomada
-        // para o acesso ao banco, nunca durante o I/O remoto.
         var account = accountPort.findByUserId(userId)
                 .orElseThrow(() -> new AccountNotFoundException(userId));
 

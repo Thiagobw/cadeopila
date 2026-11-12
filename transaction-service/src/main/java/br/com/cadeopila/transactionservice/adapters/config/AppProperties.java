@@ -5,7 +5,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
@@ -42,13 +41,7 @@ public record AppProperties(
 
             @NotEmpty List<String> currencies,
 
-            @NotBlank String baseUrl,
-
-            // Timeout de leitura dedicado do câmbio (BrasilAPI), curto de propósito: o câmbio é
-            // best-effort e pode encadear chamadas (moedas × lookback), então um read-timeout baixo
-            // impede que uma origem lenta some segundos ao caminho da transação (D8). Default 1s para
-            // que os testes de contexto não precisem declará-lo.
-            @DefaultValue("1s") Duration readTimeout
+            @NotBlank String baseUrl
     ) {
         public Exchange {
             baseUrl = stripTrailingSlash(baseUrl);
