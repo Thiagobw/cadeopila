@@ -19,8 +19,9 @@ import java.util.UUID;
 
 /**
  * Adapter da {@link AccountPort} sobre o MockAPI de contas — somente leitura (saldo inicial e limites).
- * Nunca deixa uma exceção HTTP escapar: conta ausente → {@code Optional.empty()};
- * falha técnica → {@link AccountUnavailableException}. Os logs não registram a URL (token sensível).
+ * Nunca deixa uma exceção HTTP escapar: conta ausente → {@code Optional.empty()}; falha técnica ou
+ * resposta inválida (campos obrigatórios nulos) → {@link AccountUnavailableException}. Os logs não
+ * registram a URL (token sensível).
  */
 @Component
 public class AccountRestClientAdapter implements AccountPort {
@@ -64,6 +65,14 @@ public class AccountRestClientAdapter implements AccountPort {
     }
 
     private AccountSnapshot toSnapshot(AccountApiModel model) {
+        // A MockAPI pode omitir saldo/limites (campo nulo). Tratar nulo como "sem restrição" liberaria
+        // saídas ilimitadas (D3) e, na rota de saldo, estouraria em NullPointerException/500 (D2).
+        // Rejeitamos a resposta como inválida: o POST vira REJECTED (ACCOUNT_SERVICE_UNAVAILABLE) e a
+        // rota de saldo responde 503 — em vez de confiar num dado incompleto da origem.
+        if (model.balance() == null || model.dailyLimit() == null || model.transactionLimit() == null) {
+            log.warn("API de contas devolveu campos obrigatórios nulos (userId={})", model.userId());
+            throw new AccountUnavailableException("Dados da conta inválidos: campos obrigatórios ausentes");
+        }
         return new AccountSnapshot(
                 UUID.fromString(model.userId()),
                 model.balance(),
