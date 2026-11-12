@@ -12,6 +12,7 @@ import br.com.cadeopila.transactionservice.core.ports.out.TransactionRepositoryP
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -54,11 +55,13 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<Transaction> findActiveById(UUID id) {
         return jpaRepository.findByIdAndDeletedAtIsNull(id).map(mapper::toDomain);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PageResult<Transaction> search(TransactionQuery query) {
         var pageable = PageRequest.of(query.page().page(), query.page().size(), DEFAULT_SORT);
         var page = jpaRepository.findAll(TransactionSpecifications.matching(query, zoneId), pageable);
@@ -68,12 +71,14 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
     }
 
     @Override
+    @Transactional(readOnly = true)
     public BigDecimal sumApprovedSignedAmount(UUID userId) {
         var sum = jpaRepository.sumSignedApproved(userId, TransactionStatus.APPROVED, TransactionType.DEPOSIT);
         return sum != null ? sum : BigDecimal.ZERO;
     }
 
     @Override
+    @Transactional(readOnly = true)
     public BigDecimal sumApprovedOutflowsOfDay(UUID userId, Instant dayStartInclusive, Instant dayEndExclusive) {
         var sum = jpaRepository.sumOutflows(
                 userId, TransactionStatus.APPROVED, OUTFLOW_TYPES, dayStartInclusive, dayEndExclusive);
@@ -81,12 +86,14 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
     }
 
     @Override
+    @Transactional(readOnly = true)
     public BigDecimal sumApprovedIncomingTransfers(UUID userId) {
         var sum = jpaRepository.sumIncomingTransfers(userId, TransactionType.TRANSFER, TransactionStatus.APPROVED);
         return sum != null ? sum : BigDecimal.ZERO;
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<Transaction> findActiveForReport(UUID userId, LocalDate from, LocalDate to) {
         // Reusa a Specification de filtro (usuário/período, exclui soft-deleted) sem tipo/status — assim
         // o relatório traz APPROVED e REJECTED. A validação de período (from > to) vem do próprio
@@ -99,6 +106,7 @@ public class TransactionPersistenceAdapter implements TransactionRepositoryPort 
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<AnalyticsRow> findApprovedByPeriod(UUID userId, Instant startInclusive, Instant endExclusive) {
         return jpaRepository
                 .findApprovedByPeriod(userId, TransactionStatus.APPROVED, startInclusive, endExclusive)

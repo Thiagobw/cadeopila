@@ -31,10 +31,11 @@ public class GetAccountBalanceUseCaseImpl implements GetAccountBalanceUseCase {
 
     @Override
     public Balance get(UUID userId) {
-        // Sem @Transactional: a primeira coisa do método é a chamada HTTP à API de contas; abrir uma
-        // transação aqui seguraria uma conexão do pool durante toda a chamada externa (D7). As leituras
-        // seguintes do repositório abrem (cada uma) sua própria transação curta — a conexão só é tomada
-        // para o acesso ao banco, nunca durante o I/O remoto.
+        // Sem @Transactional neste caso de uso: a primeira operação é a chamada HTTP à API de contas;
+        // abrir uma transação aqui seguraria uma conexão do pool durante toda a chamada externa (D7). A
+        // conexão com o banco é aberta de forma otimizada (readOnly) apenas no escopo do adapter de
+        // persistência (@Transactional(readOnly = true) em cada leitura), liberando o pool durante a
+        // chamada à MockAPI — a conexão só é tomada para o acesso ao banco, nunca durante o I/O remoto.
         var account = accountPort.findByUserId(userId)
                 .orElseThrow(() -> new AccountNotFoundException(userId));
 
