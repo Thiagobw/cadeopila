@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -33,11 +34,16 @@ class UserBatchControllerTest {
     private ImportUsersUseCase importUsers;
 
     @Test
-    @DisplayName("POST /batch devolve 200 com o resumo da importação")
+    @DisplayName("POST /batch devolve 200 com o resumo, created[] (id+e-mail) e os erros por linha")
     void importDevolveResumo() throws Exception {
+        var anaId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        var brunoId = UUID.fromString("22222222-2222-2222-2222-222222222222");
         when(csvParser.parse(any())).thenReturn(List.of());
         when(importUsers.importUsers(any())).thenReturn(
-                ImportResult.of(3, 2, List.of(new ImportResult.LineError(4, "Email deve ser válido"))));
+                ImportResult.of(3, 2,
+                        List.of(new ImportResult.Created(2, anaId, "ana@email.com"),
+                                new ImportResult.Created(3, brunoId, "bruno@email.com")),
+                        List.of(new ImportResult.LineError(4, "Email deve ser válido"))));
 
         var file = new MockMultipartFile("file", "usuarios.csv", "text/csv",
                 "conteudo".getBytes(StandardCharsets.UTF_8));
@@ -47,6 +53,10 @@ class UserBatchControllerTest {
                 .andExpect(jsonPath("$.totalProcessed").value(3))
                 .andExpect(jsonPath("$.totalSuccess").value(2))
                 .andExpect(jsonPath("$.totalFailed").value(1))
+                .andExpect(jsonPath("$.created[0].line").value(2))
+                .andExpect(jsonPath("$.created[0].id").value(anaId.toString()))
+                .andExpect(jsonPath("$.created[0].email").value("ana@email.com"))
+                .andExpect(jsonPath("$.created[1].id").value(brunoId.toString()))
                 .andExpect(jsonPath("$.errors[0].line").value(4));
     }
 }
