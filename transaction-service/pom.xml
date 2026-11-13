@@ -46,6 +46,13 @@
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
 
+		<!-- Actuator: expõe /actuator/health (checado pelo Docker healthcheck) e dá base ao
+		     MockApiHealthIndicator, que reprova a saúde do MS2 quando a MockAPI está inacessível. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
 		<!-- RestClient (clientes HTTP: MockAPI de contas e BrasilAPI) -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -174,6 +181,28 @@
 						<goals>
 							<goal>report</goal>
 						</goals>
+					</execution>
+					<!-- Piso de cobertura: falha o build se a cobertura de instruções cair abaixo de 80%. -->
+					<execution>
+						<id>check</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>INSTRUCTION</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.80</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>

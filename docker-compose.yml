@@ -57,6 +57,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Saúde real da aplicação (actuator): o MS2 só sobe depois do MS1 estar UP de verdade.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   # ─────────────────────────────────────────────────────────────────────
   # MS2 — transaction-service (porta 8082)
@@ -88,7 +95,16 @@ services:
       postgres:
         condition: service_healthy
       user-service:
-        condition: service_started
+        condition: service_healthy
+    # Saúde real: inclui o MockApiHealthIndicator — se ACCOUNT_API_BASE_URL estiver com token inválido
+    # ou a MockAPI inacessível, /actuator/health responde 503 e o container fica unhealthy (falha visível
+    # já na subida, em vez de só em tempo de execução).
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
 # ──────────────────────────────────────────────────────────────────────
 networks:

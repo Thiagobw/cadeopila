@@ -16,6 +16,9 @@ RUN mvn package -DskipTests -B --no-transfer-progress
 # ══════════════════════════════════════════════════════════════════════
 FROM eclipse-temurin:25-jre-alpine AS runtime
 
+# curl: usado pelo HEALTHCHECK do docker-compose (curl -f http://localhost:8080/actuator/health).
+RUN apk add --no-cache curl
+
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
