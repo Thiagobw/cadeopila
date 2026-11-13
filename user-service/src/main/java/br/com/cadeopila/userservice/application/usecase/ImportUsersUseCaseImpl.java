@@ -43,13 +43,19 @@ public class ImportUsersUseCaseImpl implements ImportUsersUseCase {
     @Override
     public ImportResult importUsers(List<CsvRow> rows) {
         var errors = new ArrayList<ImportResult.LineError>();
+        var createdUsers = new ArrayList<ImportResult.CreatedUser>();
         int success = 0;
 
         for (CsvRow row : rows) {
             try {
-                validateOrThrow(row.command());        // 400 (Bean Validation)
-                createUser.create(row.command());      // reusa a lógica existente; pode lançar 409
+                validateOrThrow(row.command());            // 400 (Bean Validation)
+                var created = createUser.create(row.command()); // reusa a lógica existente; pode lançar 409
                 success++;
+                if (created != null) {
+                    // Guarda defensiva: em runtime o create nunca devolve null; a checagem só blinda o laço
+                    // contra uma implementação (ou mock) que o faça, sem quebrar a contagem de sucesso.
+                    createdUsers.add(new ImportResult.CreatedUser(created.getId(), created.getEmail()));
+                }
             } catch (ImportValidationException e) {
                 errors.add(new ImportResult.LineError(row.lineNumber(), e.getMessage()));
             } catch (UserAlreadyExistsException e) {
@@ -59,7 +65,7 @@ public class ImportUsersUseCaseImpl implements ImportUsersUseCase {
                 errors.add(new ImportResult.LineError(row.lineNumber(), "Não foi possível importar esta linha."));
             }
         }
-        return ImportResult.of(rows.size(), success, errors);
+        return ImportResult.of(rows.size(), success, createdUsers, errors);
     }
 
     private void validateOrThrow(CreateUserUseCase.Command cmd) {
