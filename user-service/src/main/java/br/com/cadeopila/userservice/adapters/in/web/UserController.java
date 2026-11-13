@@ -5,6 +5,7 @@ import br.com.cadeopila.userservice.adapters.in.web.dto.PagedResponse;
 import br.com.cadeopila.userservice.adapters.in.web.dto.UpdateUserRequest;
 import br.com.cadeopila.userservice.adapters.in.web.dto.UserResponse;
 import br.com.cadeopila.userservice.adapters.in.web.mapper.UserWebMapper;
+import br.com.cadeopila.userservice.adapters.in.web.security.AuthenticatedUser;
 import br.com.cadeopila.userservice.core.domain.PageQuery;
 import br.com.cadeopila.userservice.core.ports.in.CreateUserUseCase;
 import br.com.cadeopila.userservice.core.ports.in.DeleteUserUseCase;
@@ -18,6 +19,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -82,24 +84,41 @@ public class UserController {
                 result.totalPages(), result.pageNumber(), result.pageSize()));
     }
 
-    @Operation(summary = "Buscar usuário por ID")
+    @Operation(summary = "Buscar usuário por ID (apenas a própria conta)")
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> findById(@PathVariable UUID id) {
+    public ResponseEntity<UserResponse> findById(@PathVariable UUID id,
+                                                 @AuthenticationPrincipal AuthenticatedUser principal) {
+        requireOwnership(id, principal);
         return ResponseEntity.ok(mapper.toResponse(findUserById.findById(id)));
     }
 
-    @Operation(summary = "Atualizar usuário (substituição completa)")
+    @Operation(summary = "Atualizar usuário (substituição completa, apenas a própria conta)")
     @PutMapping("/{id}")
     public ResponseEntity<UserResponse> update(@PathVariable UUID id,
+                                               @AuthenticationPrincipal AuthenticatedUser principal,
                                                @Valid @RequestBody UpdateUserRequest request) {
+        requireOwnership(id, principal);
         var updated = updateUser.update(mapper.toCommand(id, request));
         return ResponseEntity.ok(mapper.toResponse(updated));
     }
 
-    @Operation(summary = "Excluir usuário")
+    @Operation(summary = "Excluir usuário (apenas a própria conta)")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+    public ResponseEntity<Void> delete(@PathVariable UUID id,
+                                       @AuthenticationPrincipal AuthenticatedUser principal) {
+        requireOwnership(id, principal);
         deleteUser.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Autorização em nível de objeto: o dono do recurso vem do principal autenticado (Basic Auth), nunca do
+     * path. Impede que um usuário autenticado troque o {@code id} da URL e leia, altere ou exclua a conta de
+     * outro (IDOR). Sem principal do tipo esperado (ex.: não autenticado) também nega.
+     */
+    private static void requireOwnership(UUID targetId, AuthenticatedUser principal) {
+        if (principal == null || !principal.getId().equals(targetId)) {
+            throw new ForbiddenOperationException("Operação permitida apenas na própria conta.");
+        }
     }
 }

@@ -35,10 +35,9 @@ public class CustomUserDetailsService implements UserDetailsService {
                 // Mensagem genérica: não distingue "e-mail inexistente" de "senha errada".
                 .orElseThrow(() -> new UsernameNotFoundException("Credenciais inválidas"));
 
-        return org.springframework.security.core.userdetails.User
-                .withUsername(user.getEmail())
-                .password(user.getPasswordHash())
-                .authorities(Collections.emptyList()) // sem papéis: basta estar autenticado
-                .build();
+        // Carrega o id no principal (além do e-mail) para a autorização em nível de objeto no controller:
+        // cada usuário só pode mexer na própria conta. Sem papéis: basta estar autenticado.
+        return new AuthenticatedUser(user.getId(), user.getEmail(), user.getPasswordHash(),
+                Collections.emptyList());
     }
 }

@@ -1,6 +1,7 @@
 package br.com.cadeopila.userservice.adapters.in.web.handler;
 
 import br.com.cadeopila.userservice.adapters.in.web.CsvImportException;
+import br.com.cadeopila.userservice.adapters.in.web.ForbiddenOperationException;
 import br.com.cadeopila.userservice.core.exception.InvalidCredentialsException;
 import br.com.cadeopila.userservice.core.exception.InvalidPaginationException;
 import br.com.cadeopila.userservice.core.exception.UserAlreadyExistsException;
@@ -115,6 +116,14 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleInvalidCredentials(InvalidCredentialsException ex) {
         var problem = ProblemDetail.forStatus(HttpStatus.UNAUTHORIZED);
         problem.setTitle("Não autenticado");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    @ExceptionHandler(ForbiddenOperationException.class)
+    public ProblemDetail handleForbidden(ForbiddenOperationException ex) {
+        var problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Acesso negado");
         problem.setDetail(ex.getMessage());
         return problem;
     }
