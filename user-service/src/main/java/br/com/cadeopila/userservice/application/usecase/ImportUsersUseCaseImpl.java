@@ -42,14 +42,15 @@ public class ImportUsersUseCaseImpl implements ImportUsersUseCase {
 
     @Override
     public ImportResult importUsers(List<CsvRow> rows) {
+        var created = new ArrayList<ImportResult.Created>();
         var errors = new ArrayList<ImportResult.LineError>();
-        int success = 0;
 
         for (CsvRow row : rows) {
             try {
-                validateOrThrow(row.command());        // 400 (Bean Validation)
-                createUser.create(row.command());      // reusa a lógica existente; pode lançar 409
-                success++;
+                validateOrThrow(row.command());             // 400 (Bean Validation)
+                var user = createUser.create(row.command()); // reusa a lógica existente; pode lançar 409
+                // Devolve o id gerado na própria resposta: fecha o ovo-e-galinha com a MockAPI (sem senha/hash).
+                created.add(new ImportResult.Created(row.lineNumber(), user.getId(), user.getEmail()));
             } catch (ImportValidationException e) {
                 errors.add(new ImportResult.LineError(row.lineNumber(), e.getMessage()));
             } catch (UserAlreadyExistsException e) {
@@ -59,7 +60,7 @@ public class ImportUsersUseCaseImpl implements ImportUsersUseCase {
                 errors.add(new ImportResult.LineError(row.lineNumber(), "Não foi possível importar esta linha."));
             }
         }
-        return ImportResult.of(rows.size(), success, errors);
+        return ImportResult.of(rows.size(), created.size(), created, errors);
     }
 
     private void validateOrThrow(CreateUserUseCase.Command cmd) {

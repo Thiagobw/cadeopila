@@ -36,7 +36,9 @@ public class UserBatchController {
             description = "Recebe um arquivo CSV (multipart/form-data, campo 'file') com as colunas "
                     + "name,email,cpf,password. Tolera BOM UTF-8 e separador ';' ou ','. "
                     + "Linhas inválidas (CPF/e-mail inválido, duplicado) são rejeitadas individualmente "
-                    + "sem interromper a importação; o corpo traz o total de sucesso/falha e os erros por linha.")
+                    + "sem interromper a importação; o corpo traz o total de sucesso/falha, a lista "
+                    + "'created' (linha, id e e-mail de cada usuário criado — útil para semear a MockAPI) "
+                    + "e os erros por linha.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Importação processada (ver resumo no corpo)"),
             @ApiResponse(responseCode = "400", description = "Arquivo ausente, vazio ou com cabeçalho inválido")
