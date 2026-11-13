@@ -9,7 +9,13 @@ import org.springframework.core.Ordered;
 /**
  * Registra o {@link InternalApiKeyFilter} exclusivamente na rota interna de validação de credenciais,
  * sem tocar no resto da API. A chave vem de {@code INTERNAL_API_KEY} (a mesma que o MS2 envia ao chamar
- * este endpoint). Como o MS1 não usa Spring Security, o filtro é registrado como servlet filter nativo.
+ * este endpoint).
+ *
+ * <p>O gate M2M é um servlet filter <i>nativo</i> (não um filtro da cadeia do Spring Security), registrado
+ * com {@link Ordered#HIGHEST_PRECEDENCE} para rodar ANTES da cadeia de segurança do {@link SecurityConfig}
+ * (Basic Auth do CRUD, GAP #2). Dessa forma a validação da chave interna permanece independente do Basic
+ * Auth: a rota {@code /api/v1/auth/validate} é liberada no {@link SecurityConfig} ({@code permitAll}) e
+ * protegida, de fato, por esta chave M2M.</p>
  */
 @Configuration
 public class InternalApiSecurityConfig {
