@@ -16,6 +16,9 @@ import br.com.cadeopila.transactionservice.core.ports.in.FindTransactionByIdUseC
 import br.com.cadeopila.transactionservice.core.ports.in.ListTransactionsUseCase;
 import br.com.cadeopila.transactionservice.core.ports.in.UpdateTransactionMetadataUseCase;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -78,9 +81,31 @@ public class TransactionController {
             @ApiResponse(responseCode = "500", description = "Erro interno (ex.: falha de persistência)")
     })
     @PostMapping
-    public ResponseEntity<CreateTransactionResponse> create(@Valid @RequestBody CreateTransactionRequest request,
-                                                            @AuthenticationPrincipal UUID userId,
-                                                            UriComponentsBuilder uriBuilder) {
+    public ResponseEntity<CreateTransactionResponse> create(
+            @Valid @RequestBody
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = CreateTransactionRequest.class),
+                    examples = {
+                            // O primeiro exemplo é o padrão no "Try it out" — um DEPOSIT válido, sem
+                            // destinationUserId (que só vale em TRANSFER), evitando 400 na primeira tentativa.
+                            @ExampleObject(name = "Depósito", value = """
+                                    {"type":"DEPOSIT","amount":1000.00,"description":"Deposito inicial"}"""),
+                            // PURCHASE exige category (regra de domínio): sem ela o POST responde 400.
+                            // Exemplo de despesa fixa e recorrente (entra no Custo Fixo Operacional).
+                            @ExampleObject(name = "Compra (Estilo de Vida)", value = """
+                                    {"type":"PURCHASE","amount":39.90,"description":"Assinatura de streaming",\
+                                    "category":"LEISURE","categoryLevel1":"ESTILO_DE_VIDA","categoryLevel2":"Streaming",\
+                                    "isFixed":true,"isRecurring":true}"""),
+                            @ExampleObject(name = "Transferência (troque o destino)", value = """
+                                    {"type":"TRANSFER","amount":200.00,"description":"Divisao da conta",\
+                                    "destinationUserId":"00000000-0000-0000-0000-000000000000"}"""),
+                            @ExampleObject(name = "Saque", value = """
+                                    {"type":"WITHDRAWAL","amount":50.00,"description":"Saque no caixa"}""")
+                    }))
+            CreateTransactionRequest request,
+            @AuthenticationPrincipal UUID userId,
+            UriComponentsBuilder uriBuilder) {
         var result = createTransaction.create(mapper.toCommand(request, userId));
         var body = mapper.toCreateResponse(result);
         var location = uriBuilder.path("/api/v1/transactions/{id}").buildAndExpand(body.id()).toUri();
