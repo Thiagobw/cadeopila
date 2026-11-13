@@ -1,0 +1,55 @@
+package br.com.cadeopila.transactionservice.application.usecase;
+
+import br.com.cadeopila.transactionservice.core.exception.AccountNotFoundException;
+import br.com.cadeopila.transactionservice.core.ports.in.GetAccountBalanceUseCase;
+import br.com.cadeopila.transactionservice.core.ports.out.AccountPort;
+import br.com.cadeopila.transactionservice.core.ports.out.TransactionRepositoryPort;
+import org.springframework.stereotype.Service;
+
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.UUID;
+
+@Service
+public class GetAccountBalanceUseCaseImpl implements GetAccountBalanceUseCase {
+
+    private final AccountPort accountPort;
+    private final TransactionRepositoryPort transactionRepository;
+    private final Clock clock;
+    private final ZoneId zoneId;
+
+    public GetAccountBalanceUseCaseImpl(AccountPort accountPort,
+                                        TransactionRepositoryPort transactionRepository,
+                                        Clock clock,
+                                        ZoneId zoneId) {
+        this.accountPort = accountPort;
+        this.transactionRepository = transactionRepository;
+        this.clock = clock;
+        this.zoneId = zoneId;
+    }
+
+    @Override
+    public Balance get(UUID userId) {
+        // Sem @Transactional: a primeira coisa do método é a chamada HTTP à API de contas; abrir uma
+        // transação aqui seguraria uma conexão do pool durante toda a chamada externa (D7). As leituras
+        // seguintes do repositório abrem (cada uma) sua própria transação curta — a conexão só é tomada
+        // para o acesso ao banco, nunca durante o I/O remoto.
+        var account = accountPort.findByUserId(userId)
+                .orElseThrow(() -> new AccountNotFoundException(userId));
+
+        // Saldo atual = saldo inicial da Mock + histórico aprovado do MS2 + transferências recebidas
+        // (o usuário como destinatário). A Mock é somente leitura.
+        var currentBalance = account.balance()
+                .add(transactionRepository.sumApprovedSignedAmount(userId))
+                .add(transactionRepository.sumApprovedIncomingTransfers(userId));
+
+        LocalDate today = clock.instant().atZone(zoneId).toLocalDate();
+        var spentToday = transactionRepository.sumApprovedOutflowsOfDay(userId,
+                today.atStartOfDay(zoneId).toInstant(),
+                today.plusDays(1).atStartOfDay(zoneId).toInstant());
+        var availableToday = account.dailyLimit().subtract(spentToday);
+
+        return new Balance(currentBalance, account.dailyLimit(), account.transactionLimit(), spentToday, availableToday);
+    }
+}
