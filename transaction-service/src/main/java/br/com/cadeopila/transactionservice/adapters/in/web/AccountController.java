@@ -4,6 +4,7 @@ import br.com.cadeopila.transactionservice.adapters.in.web.dto.AccountBalanceRes
 import br.com.cadeopila.transactionservice.adapters.in.web.mapper.AccountWebMapper;
 import br.com.cadeopila.transactionservice.core.ports.in.GetAccountBalanceUseCase;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,7 +39,8 @@ public class AccountController {
             @ApiResponse(responseCode = "503", description = "API de contas indisponível")
     })
     @GetMapping("/balance")
-    public ResponseEntity<AccountBalanceResponse> balance(@AuthenticationPrincipal UUID userId) {
+    public ResponseEntity<AccountBalanceResponse> balance(
+            @Parameter(hidden = true) @AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(mapper.toResponse(getAccountBalance.get(userId)));
     }
 }
