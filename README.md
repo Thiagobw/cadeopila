@@ -40,6 +40,16 @@ Um único comando sobe os 3 containers. Acompanhe os logs com `docker compose lo
 | **MS1 — user-service** | `http://localhost:8081/swagger-ui.html` (ou `/swagger-ui/index.html`) | `http://localhost:8081/v3/api-docs` |
 | **MS2 — transaction-service** | `http://localhost:8082/swagger-ui.html` (ou `/swagger-ui/index.html`) | `http://localhost:8082/v3/api-docs` |
 
+### Base de demonstração (seed)
+Para apresentar com histórico já pronto, popule **3 usuários demo** (senha `Senha@Teste123`) com ~51 transações
+cada (aprovadas e rejeitadas, espalhadas por 2026, com transferências entre eles). Com os serviços `UP`:
+```powershell
+pwsh ./infra/seed/Seed-Demo.ps1
+```
+Passo a passo, pré-requisitos e **guia de preenchimento dos campos do Swagger** (rotas de **relatório** e
+**análise de despesas**) em
+[`transaction-service/docs/DEMO-SEED-E-SWAGGER.md`](transaction-service/docs/DEMO-SEED-E-SWAGGER.md).
+
 ### Build e testes
 Os testes do `user-service` são unitários e de fatia web (`@WebMvcTest`), **sem dependência de banco de
 dados** — os casos de uso usam Mockito e o adapter de persistência tem o repositório Spring Data mockado.

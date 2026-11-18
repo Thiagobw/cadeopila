@@ -4,6 +4,8 @@ import br.com.cadeopila.transactionservice.adapters.in.web.dto.ExpenseAnalysisRe
 import br.com.cadeopila.transactionservice.adapters.in.web.mapper.ExpenseAnalysisWebMapper;
 import br.com.cadeopila.transactionservice.core.ports.in.GetExpenseAnalysisUseCase;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -42,7 +44,11 @@ public class ExpenseAnalyticsController {
     })
     @GetMapping("/summary")
     public ResponseEntity<ExpenseAnalysisResponse> summary(
-            @AuthenticationPrincipal UUID userId,
+            @Parameter(hidden = true) @AuthenticationPrincipal UUID userId,
+            @Parameter(description = "Mês de referência no formato MM-YYYY (ex.: 11-2026). Atenção: é mês-ano, "
+                    + "NÃO yyyy-MM nem data completa. Opcional: sem o parâmetro usa o mês atual (America/Sao_Paulo).",
+                    example = "11-2026",
+                    schema = @Schema(type = "string", pattern = "^\\d{2}-\\d{4}$"))
             @RequestParam(required = false) String month) {
         var summary = getExpenseAnalysis.summarize(userId, mapper.toYearMonth(month));
         return ResponseEntity.ok(mapper.toResponse(summary));

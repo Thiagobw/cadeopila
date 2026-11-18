@@ -16,6 +16,7 @@ import br.com.cadeopila.transactionservice.core.ports.in.FindTransactionByIdUseC
 import br.com.cadeopila.transactionservice.core.ports.in.ListTransactionsUseCase;
 import br.com.cadeopila.transactionservice.core.ports.in.UpdateTransactionMetadataUseCase;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -104,7 +105,7 @@ public class TransactionController {
                                     {"type":"WITHDRAWAL","amount":50.00,"description":"Saque no caixa"}""")
                     }))
             CreateTransactionRequest request,
-            @AuthenticationPrincipal UUID userId,
+            @Parameter(hidden = true) @AuthenticationPrincipal UUID userId,
             UriComponentsBuilder uriBuilder) {
         var result = createTransaction.create(mapper.toCommand(request, userId));
         var body = mapper.toCreateResponse(result);
@@ -118,8 +119,11 @@ public class TransactionController {
             @ApiResponse(responseCode = "404", description = "Transação inexistente ou excluída")
     })
     @GetMapping("/{id}")
-    public ResponseEntity<TransactionResponse> findById(@PathVariable UUID id,
-                                                        @AuthenticationPrincipal UUID userId) {
+    public ResponseEntity<TransactionResponse> findById(
+            @Parameter(description = "ID (UUID) da transação a buscar",
+                    example = "a1b2c3d4-58cc-4372-a567-0e02b2c3d479")
+            @PathVariable UUID id,
+            @Parameter(hidden = true) @AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(mapper.toResponse(findTransactionById.findById(id, userId)));
     }
 
@@ -131,13 +135,25 @@ public class TransactionController {
     })
     @GetMapping
     public ResponseEntity<PagedResponse<TransactionResponse>> list(
-            @AuthenticationPrincipal UUID userId,
+            @Parameter(hidden = true) @AuthenticationPrincipal UUID userId,
+            @Parameter(description = "Filtra por tipo da transação. Opcional.",
+                    schema = @Schema(implementation = TransactionType.class))
             @RequestParam(required = false) TransactionType type,
+            @Parameter(description = "Filtra por status. Opcional.",
+                    schema = @Schema(implementation = TransactionStatus.class))
             @RequestParam(required = false) TransactionStatus status,
+            @Parameter(description = "Início do período (inclusivo), formato ISO yyyy-MM-dd (ex.: 2026-11-01). "
+                    + "Opcional. Deve ser <= to.",
+                    example = "2026-11-01", schema = @Schema(type = "string", format = "date"))
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "Fim do período (inclusivo), formato ISO yyyy-MM-dd (ex.: 2026-11-30). "
+                    + "Opcional. Deve ser >= from.",
+                    example = "2026-11-30", schema = @Schema(type = "string", format = "date"))
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @Parameter(description = "Página (base 0). Padrão 0.", example = "0")
             @RequestParam(defaultValue = "0")
             @PositiveOrZero(message = "deve ser maior ou igual a 0") int page,
+            @Parameter(description = "Tamanho da página (1 a " + PageQuery.MAX_SIZE + "). Padrão 20.", example = "20")
             @RequestParam(defaultValue = "20")
             @Min(value = 1, message = "deve ser maior ou igual a 1")
             @Max(value = PageQuery.MAX_SIZE, message = "deve ser no máximo " + PageQuery.MAX_SIZE) int size) {
@@ -157,9 +173,12 @@ public class TransactionController {
             @ApiResponse(responseCode = "409", description = "Conflito de concorrência (versão)")
     })
     @PatchMapping("/{id}")
-    public ResponseEntity<TransactionResponse> updateMetadata(@PathVariable UUID id,
-                                                             @AuthenticationPrincipal UUID userId,
-                                                             @Valid @RequestBody UpdateTransactionMetadataRequest request) {
+    public ResponseEntity<TransactionResponse> updateMetadata(
+            @Parameter(description = "ID (UUID) da transação a editar",
+                    example = "a1b2c3d4-58cc-4372-a567-0e02b2c3d479")
+            @PathVariable UUID id,
+            @Parameter(hidden = true) @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody UpdateTransactionMetadataRequest request) {
         var updated = updateTransactionMetadata.update(mapper.toCommand(id, userId, request));
         return ResponseEntity.ok(mapper.toResponse(updated));
     }
@@ -172,7 +191,11 @@ public class TransactionController {
             @ApiResponse(responseCode = "422", description = "Transação APPROVED não pode ser excluída")
     })
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable UUID id, @AuthenticationPrincipal UUID userId) {
+    public ResponseEntity<Void> delete(
+            @Parameter(description = "ID (UUID) da transação a excluir (só REJECTED)",
+                    example = "a1b2c3d4-58cc-4372-a567-0e02b2c3d479")
+            @PathVariable UUID id,
+            @Parameter(hidden = true) @AuthenticationPrincipal UUID userId) {
         deleteTransaction.delete(id, userId);
         return ResponseEntity.noContent().build();
     }

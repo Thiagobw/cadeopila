@@ -1,0 +1,88 @@
+docker compose up --build
+docker compose up
+Exemplo 1 — já cadastrado e pronto
+
+- E-mail:
+              - Senha:
+- UUID: b48639fa-b1b5-4a9b-9529-d84eeec780d4
+
+1) POST /api/v1/users — cadastro (público)
+
+
+2) POST /api/v1/users/batch — import em massa (público)
+Não é JSON: em Try it out → Choose File → selecione usuarios_mock_teste.csv (raiz do projeto) → Execute.
+→ 200 totalSuccess: 2, totalFailed: 1 (a 3ª linha tem e-mail inválido de propósito).
+O created[] traz os UUIDs da Ana e do Bruno.
+
+
+3) GET /api/v1/users — listar (exige Authorize)
+Parâmetros: page = 0, size = 20. → 200. Sem Authorize → 401 (prova do Basic Auth).
+
+
+4) GET /api/v1/users/{id} — buscar por id (só a própria conta)
+id = o seu próprio id (o do usuário autenticado). → 200. Com o id de outro usuário → 403 (proteção de IDOR).
+
+
+5) PUT /api/v1/users/{id} — atualizar (só a própria conta)
+id = o seu id. Body (name e email obrigatórios; password opcional):
+{ "name": "Thiago Leopoldo Beffart", "email": "thiagoBeffart@gmail.com", "password": "senha@Teste123" }
+
+
+6) DELETE /api/v1/users/{id} — excluir (só a própria conta)
+id = o seu id, sem body. → 204. Id de outro → 403.
+
+
+7) POST /api/v1/auth/validate — interno (M2M), NÃO demonstrar
+É server-to-server: exige o header X-Internal-Key (não Basic Auth). Com o Authorize comum dá 401 Chave interna ausente ou inválida — e isso é esperado. Só o MS2 chama este endpoint.
+
+MS2 — transaction-service (Swagger :8082) — com a Ana
+
+1) POST /api/v1/transactions — criar (4 tipos; já no dropdown Examples)
+Depósito → 201 APPROVED (mostre o bloco exchange USD/EUR):
+{ "type": "DEPOSIT", "amount": 1000.00, "description": "Deposito inicial" }
+
+Compra → 201 APPROVED:
+{ "type": "PURCHASE", "amount": 150.00, "description": "Jantar de sexta", "category": "LEISURE", "categoryLevel1": "ESTILO_DE_VIDA", "categoryLevel2": "Delivery" }
+
+Transferência → 201 APPROVED (troque pelo UUID do Bruno):
+{ "type": "TRANSFER", "amount": 200.00, "description": "Divisao da conta", "destinationUserId": "<UUID_BRUNO>" }
+Bruno Lima | bruno.lima@email.com | Senha@Teste123
+
+
+Saque alto → 201 REJECTED · INSUFFICIENT_BALANCE:
+{ "type": "WITHDRAWAL", "amount": 2000.00, "description": "Saque alto" }
+
+Compra altíssima → 201 REJECTED · TRANSACTION_LIMIT_EXCEEDED:
+{ "type": "PURCHASE", "amount": 999999.00, "description": "TV 120 polegadas", "category": "SHOPPING", "categoryLevel1": "ESTILO_DE_VIDA" }
+
+"Rejeição de negócio não é erro HTTP: volta 201 e fica salva com o motivo — é histórico." Guarde um id de transação.
+
+2) GET /api/v1/transactions — listar (filtros)
+Parâmetros: status = REJECTED (ou type, from, to, page, size). → 200 com as 2 rejeitadas.
+
+3) GET /api/v1/transactions/{id} — buscar por id
+id = um id devolvido no passo 1. → 200.
+
+4) PATCH /api/v1/transactions/{id} — editar metadados (só description/category)
+id = o da Compra. Body (informe ao menos um campo; valor/tipo/status são imutáveis):
+{ "description": "Jantar de sexta (corrigido)", "category": "FOOD" }
+
+6) GET /api/v1/accounts/balance — saldo e limites
+Sem parâmetros (usa o usuário do Authorize). → 200 (saldo derivado da Ana = 1650; como Bruno = 700, recebeu a transferência).
+
+7) GET /api/v1/analytics/expenses/summary — análise do mês
+Parâmetro opcional: month = 11-2026 (sem ele, usa o mês atual). → 200 (visão geral, raio-X por grau, onde cortar, custo fixo).
+
+8) GET /api/v1/transactions/report — relatório para download
+Parâmetro: format = pdf (ou xlsx, csv). → 200 (arquivo baixa). Datas opcionais from/to.
+
+
+# user-service
+hml.cadeopila.user-service.com.br {
+        reverse_proxy front-hml:8081
+}
+
+# transaction service
+app.cadeopila.transaction-service.com.br {
+        reverse_proxy front-prod:8082
+}
